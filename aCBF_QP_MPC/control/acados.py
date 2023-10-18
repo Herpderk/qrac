@@ -5,7 +5,7 @@
     May need to install qpOASES version 3.1 as well.
 '''
 
-from acados_template import AcadosOcpSolver, AcadosOcp, AcadosModel
+from acados_template import AcadosOcpSolver, AcadosOcp
 import numpy as np
 from numpy import pi
 from scipy.interpolate import make_interp_spline
