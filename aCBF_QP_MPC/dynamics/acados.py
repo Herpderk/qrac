@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import casadi as cs
+from acados_template import AcadosModel
 
 
 def nonlinear_quadrotor_model(m, l, Ixx, Iyy, Izz, k,):# kf, km, Ax, Ay, Az):
@@ -85,11 +86,11 @@ def nonlinear_quadrotor_model(m, l, Ixx, Iyy, Izz, k,):# kf, km, Ax, Ay, Az):
     Xdot = f + g @ u
 
     # store variables in casadi struct
-    model_cs = cs.types.SimpleNamespace()
-    model_cs.f_expl_expr = Xdot
-    model_cs.x = X
-    model_cs.xdot = Xdot
-    model_cs.u = u
-    model_cs.name = 'nonlin_quadrotor'
-    return model_cs
+    model = AcadosModel()
+    model.f_expl_expr = Xdot
+    model.x = X
+    model.xdot = Xdot
+    model.u = u 
+    model.name = "nonlinear_quadrotor_model"
+    return model
 

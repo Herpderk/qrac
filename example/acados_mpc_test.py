@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from aCBF_QP_MPC.dynamics.casadi import nonlinear_quadrotor_model
+from aCBF_QP_MPC.dynamics.acados import nonlinear_quadrotor_model
 from aCBF_QP_MPC.control.acados import sqpNMPC
 import numpy as np
 

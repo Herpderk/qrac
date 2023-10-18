@@ -8,7 +8,6 @@
 from acados_template import AcadosOcpSolver, AcadosOcp, AcadosModel
 import numpy as np
 from numpy import pi
-import scipy.linalg as la
 from scipy.interpolate import make_interp_spline
 import matplotlib.pyplot as plt
 import time
@@ -28,7 +27,7 @@ class sqpNMPC():
             number of shooting nodes (length of prediction horizon),
             square of maximum motor frequency. 
         '''
-        model_ac, self.nx, self.nu = self.get_acados_model(model)
+        self.nx, self.nu = self.get_model_dims(model)
 
         assert Q.shape == (self.nx, self.nx)
         assert R.shape == (self.nu, self.nu)
@@ -39,27 +38,20 @@ class sqpNMPC():
         self.DT = time_step
         self.N = num_nodes
         self.u_min = u_min
-        self.solver = self.formulate_ocp(model_ac, Q, R, u_max, u_min)
+        self.solver = self.formulate_ocp(model, Q, R, u_max, u_min)
 
         # deleting acados compiled files when script is terminated.
         atexit.register(self.delete_compiled_files)
         return
 
 
-    def get_acados_model(self, model_cs):
+    def get_model_dims(self, model):
         ''' Acados model format:
             f_imp_expr/f_expl_expr, x, xdot, u, name 
         '''
-        nx = model_cs.x.shape[0]
-        nu = model_cs.u.shape[0]
-
-        model_ac = AcadosModel()
-        model_ac.f_expl_expr = model_cs.f_expl_expr
-        model_ac.x = model_cs.x
-        model_ac.xdot = model_cs.xdot
-        model_ac.u = model_cs.u 
-        model_ac.name = model_cs.name
-        return model_ac, nx, nu
+        nx = model.x.shape[0]
+        nu = model.u.shape[0]
+        return nx, nu
 
 
     def formulate_ocp(self, model, Q, R, u_max, u_min):
