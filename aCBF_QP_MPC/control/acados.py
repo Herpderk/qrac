@@ -33,13 +33,14 @@ class sqpNMPC():
         assert Q.shape == (self.nx, self.nx)
         assert R.shape == (self.nu, self.nu)
         assert u_max.shape[0] == self.nu
+        assert u_min.shape[0] == self.nu
         assert type(num_nodes) == int
 
         self.DT = time_step
         self.N = num_nodes
         self.u_min = u_min
         self.solver = self.formulate_ocp(model_ac, Q, R, u_max, u_min)
-        
+
         # deleting acados compiled files when script is terminated.
         atexit.register(self.delete_compiled_files)
         return
@@ -89,7 +90,10 @@ class sqpNMPC():
         ocp.cost.cost_type_e = 'LINEAR_LS'
 
         # W is a block diag matrix of Q and R costs from standard QP
-        ocp.cost.W = la.block_diag(Q, R)
+        ocp.cost.W = np.block([
+            [Q, np.zeros((self.nx,self.nu))],
+            [np.zeros((self.nu,self.nx)), R],
+        ])
 
         # use V coeffs to map x & u to y
         ocp.cost.Vx = np.zeros((ny, nx))
@@ -235,11 +239,11 @@ class sqpNMPC():
 
         fig, axs = plt.subplots(5, figsize=(12, 10))
 
-        axs[0].set_ylabel('thrust (N) and torques (N*m)')
-        axs[0].plot(t_interp,u1, label='thrust')
-        axs[0].plot(t_interp,u2, label='Tx')   
-        axs[0].plot(t_interp,u3, label='Ty')
-        axs[0].plot(t_interp,u4, label='Tz')
+        axs[0].set_ylabel('motor thrust (N)')
+        axs[0].plot(t_interp,u1, label='T1')
+        axs[0].plot(t_interp,u2, label='T2')   
+        axs[0].plot(t_interp,u3, label='T3')
+        axs[0].plot(t_interp,u4, label='T4')
         axs[0].legend()
         
         axs[1].set_ylabel('position (m)')

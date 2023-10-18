@@ -14,22 +14,26 @@ def main():
     Ixx = 3.144988 * 10**(-5)
     Iyy = 3.151127 * 10**(-5)
     Izz = 7.058874 * 10**(-5)
-    kf = 1.858 * 10**(-3)#0.005022
-    km = 1.858 * 10**(-5)
+    k = 0.005964552          # k is the ratio of torque to thrust
     Ax = 0
     Ay = 0
     Az = 0
+    max_thrust = 0.64
+    '''
+    kf = 1.858 * 10**(-3)#0.005022
+    km = 1.858 * 10**(-5)
+    '''
     model = nonlinear_quadrotor_model(
-        m=m, l=l, Ixx=Ixx, Iyy=Iyy, Izz=Izz, kf=kf, km=km, Ax=Ax, Ay=Ay, Az=Az)
+        m=m, l=l, Ixx=Ixx, Iyy=Iyy, Izz=Izz, k=k)
 
     Q = np.diag(
         [1,1,1, 1,1,1, 1,1,1, 1,1,1,])
     R = np.diag(
         [1, 1, 1, 1])
-    u_max = np.array([0.64, 0.0128, 0.0128, 0.0018])
-    u_min = np.array([0, -0.0128, -0.0128, -0.0018])
+    u_max = max_thrust * np.ones(4)
+    u_min = np.zeros(4)
     test_mpc = sqpNMPC(
-        model=model, Q=Q, R=R, u_max=u_max, u_min=u_min, time_step=0.03, num_nodes=15,)
+        model=model, Q=Q, R=R, u_max=u_max, u_min=u_min, time_step=0.05, num_nodes=25,)
 
     x0 = np.zeros(12)
     x_set = np.array(

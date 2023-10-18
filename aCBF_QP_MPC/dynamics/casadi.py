@@ -1,16 +1,15 @@
 #!/usr/bin/python3
 
 import casadi as cs
-import numpy as np
 
 
-def nonlinear_quadrotor_model(m, l, Ixx, Iyy, Izz, kf, km, Ax, Ay, Az):
+def nonlinear_quadrotor_model(m, l, Ixx, Iyy, Izz, k,):# kf, km, Ax, Ay, Az):
     ''' Returns casadi struct containing explicit dynamics,
         state, state_dot, control input, and name. 
         Nonlinear continuous-time quadrotor dynamics. 
         The cartesian states are in ENU.
     '''
-    # State Variables: position, rotation, and their time-derivatives
+    # State Variables: position, rotation, velocity, and body-frame angular velocity
     x = cs.SX.sym('x')
     y = cs.SX.sym('y')
     z = cs.SX.sym('z')
@@ -27,7 +26,6 @@ def nonlinear_quadrotor_model(m, l, Ixx, Iyy, Izz, kf, km, Ax, Ay, Az):
         x, y, z, phi, theta, psi,\
         x_d, y_d, z_d, phi_d_B, theta_d_B, psi_d_B
     ))
-
 
     # rotation matrix from body frame to inertial frame
     Rx = cs.SX(cs.vertcat(
@@ -47,66 +45,15 @@ def nonlinear_quadrotor_model(m, l, Ixx, Iyy, Izz, kf, km, Ax, Ay, Az):
     ))
     R = Rz @ Ry @ Rx
 
-
-    # calculation of jacobian matrix that converts body frame vels to inertial frame
+    # Diagonal of inertial matrix
     I = cs.SX(cs.vertcat(
         cs.horzcat(Ixx, 0, 0),
         cs.horzcat(0, Iyy, 0),
         cs.horzcat(0, 0, Izz),
     ))
 
-    '''
-    W = cs.SX(cs.vertcat( 
-        cs.horzcat(1,  0,        -cs.sin(theta)),
-        cs.horzcat(0,  cs.cos(phi),  cs.cos(theta)*cs.sin(phi)),   
-        cs.horzcat(0, -cs.sin(phi),  cs.cos(theta)*cs.cos(phi)),
-    ))
-    J = W.T @ I @ W
-
-
-    # Coriolis matrix for defining angular equations of motion
-    C11 = 0
-
-    C12 = (Iyy-Izz)*(theta_d*cs.cos(phi)*cs.sin(phi) + psi_d*(cs.sin(phi)**2)*cs.cos(theta)) +\
-        (Izz-Iyy)*psi_d*(cs.cos(phi)**2)*cs.cos(theta) -\
-        Ixx*psi_d*cs.cos(theta)
-
-    C13 = (Izz-Iyy)*psi_d*cs.cos(phi)*cs.sin(phi)*(cs.cos(theta)**2)
-
-    C21 = (Izz-Iyy)*(theta_d*cs.cos(phi)*cs.sin(phi) + psi_d*(cs.sin(phi)**2)*cs.cos(theta)) +\
-        (Iyy-Izz)*psi_d*(cs.cos(phi)**2)*cs.cos(theta) +\
-        Ixx*psi_d*cs.cos(theta)
-
-    C22 = (Izz-Iyy)*phi_d*cs.cos(phi)*cs.sin(phi)
-
-    C23 = -Ixx*psi_d*cs.sin(theta)*cs.cos(theta) +\
-        Iyy*psi_d*(cs.sin(phi)**2)*cs.sin(theta)*cs.cos(theta) +\
-        Izz*psi_d*(cs.cos(phi)**2)*cs.sin(theta)*cs.cos(theta)
-
-    C31 = (Iyy-Izz)*psi_d*(cs.cos(theta)**2)*cs.sin(phi)*cs.cos(phi) -\
-        Ixx*theta_d*cs.cos(theta)
-
-    C32 = (Izz-Iyy)*(theta_d*cs.cos(phi)*cs.sin(phi)*cs.sin(theta) + phi_d*(cs.sin(phi)**2)*cs.cos(theta)) +\
-        (Iyy-Izz)*phi_d*(cs.cos(phi)**2)*cs.cos(theta) +\
-        Ixx*psi_d*cs.sin(theta)*cs.cos(theta) -\
-        Iyy*psi_d*(cs.sin(phi)**2)*cs.sin(theta)*cs.cos(theta) -\
-        Izz*psi_d*(cs.cos(phi)**2)*cs.sin(theta)*cs.cos(theta)
-
-    C33 = (Iyy-Izz)*phi_d*cs.cos(phi)*cs.sin(phi)*(cs.cos(theta)**2) -\
-        Iyy*theta_d*(cs.sin(phi)**2)*cs.cos(theta)*cs.sin(theta) -\
-        Izz*theta_d*(cs.cos(phi)**2)*cs.cos(theta)*cs.sin(theta) +\
-        Ixx*theta_d*cs.cos(theta)*cs.sin(theta)
-
-    C = cs.SX(cs.vertcat(
-        cs.horzcat(C11, C12, C13), 
-        cs.horzcat(C21, C22, C23), 
-        cs.horzcat(C31, C32, C33),
-    ))
-    '''
-
-    # thrust, tau_x, tau_y, tau_z
+    # thrust of motors 1 to 4
     u = cs.SX.sym('u', 4)
-
 
     # continuous-time dynamics
     gravity = 9.81              # acceleration due to gravity
@@ -116,31 +63,25 @@ def nonlinear_quadrotor_model(m, l, Ixx, Iyy, Izz, kf, km, Ax, Ay, Az):
         phi_d_B, theta_d_B, psi_d_B,
         0,0,-gravity,
         cs.inv(I) @ (cs.cross(-w_B, I @ w_B)),
-        #cs.inv(J) @ C @ -cs.vertcat(phi_d, theta_d, psi_d)
     ))
-    '''
-    w_to_T = cs.SX(cs.vertcat(
-        cs.SX.zeros(2,4),
-        cs.horzcat(kf/m, kf/m, kf/m, kf/m),
-        cs.horzcat(0, -l*kf, 0, l*kf),
-        cs.horzcat(-l*kf, 0, l*kf, 0),
-        cs.horzcat(-km, km, -km, km),
-    ))
-    '''
+    
     g_bot = cs.SX(cs.vertcat(
         cs.horzcat(R/m, cs.SX.zeros(3,3)),
         cs.horzcat(cs.SX.zeros(3,3), cs.inv(I))
     ))
     u_to_g = cs.SX(cs.vertcat(
         cs.SX.zeros(2,4),
-        cs.SX.eye(4)
+        (1/m) * cs.SX.ones(1,4),
+        cs.horzcat(0, -l, 0, l),
+        cs.horzcat(-l, 0, l, 0),
+        -k * cs.SX.ones(1,4),
     ))
-
     g = cs.SX(cs.vertcat(
         cs.SX.zeros(6, 4),
         g_bot @ u_to_g
     ))
-
+    
+    # control affine formulation
     Xdot = f + g @ u
 
     # store variables in casadi struct
