@@ -1,4 +1,5 @@
 c_generated_code
 acados_ocp_nlp.json
+acados_sim.json
 __pycache__
 *.egg-info*

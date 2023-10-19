@@ -17,7 +17,7 @@ import shutil
 import os
 
 
-class sqpNMPC():
+class SqpNmpc():
     ''' SQP approximation of nonlinear MPC using Acados's OCP solver.
     '''
 
@@ -38,11 +38,10 @@ class sqpNMPC():
         self.DT = time_step
         self.N = num_nodes
         self.u_min = u_min
-        self.solver = self.formulate_ocp(model, Q, R, u_max, u_min)
+        self.solver = self.init_solver(model, Q, R, u_max, u_min)
 
         # deleting acados compiled files when script is terminated.
         atexit.register(self.delete_compiled_files)
-        return
 
 
     def get_model_dims(self, model):
@@ -54,7 +53,7 @@ class sqpNMPC():
         return nx, nu
 
 
-    def formulate_ocp(self, model, Q, R, u_max, u_min):
+    def init_solver(self, model, Q, R, u_max, u_min):
         ''' Guide to acados OCP formulation: 
             https://github.com/acados/acados/blob/master/docs/problem_formulation/problem_formulation_ocp_mex.pdf 
         '''
@@ -70,10 +69,9 @@ class sqpNMPC():
         ocp.dims.ny = ny
         ocp.dims.nbx_0 = nx
         ocp.dims.nbu = nu
-        '''
-        ocp.dims.nbx = 4    # number of states being constrained
-        '''
-        
+        #ocp.dims.nbx = 4    # number of states being constrained
+
+
         # total horizon in seconds
         ocp.solver_options.tf = self.DT*self.N  
 
@@ -103,21 +101,13 @@ class sqpNMPC():
         ocp.constraints.lbu = u_min
         ocp.constraints.ubu = u_max
         ocp.constraints.idxbu = np.arange(nu)
-        
         '''
         # state constraints: z, roll, pitch, yaw
         inf = 1000000000
-        ocp.constraints.lbx = np.array([
-            0, -pi/2, -pi/2, 0
-        ])
-        ocp.constraints.ubx = np.array([
-            inf, pi/2, pi/2, 2*pi
-        ])
-        ocp.constraints.idxbx = np.array([
-            2, 3, 4, 5
-        ])
+        ocp.constraints.lbx = np.array([0, -pi/2, -pi/2, 0])
+        ocp.constraints.ubx = np.array([inf, pi/2, pi/2, 2*pi])
+        ocp.constraints.idxbx = np.array([2, 3, 4, 5])
         '''
-
         # not sure what this is, but this paper say partial condensing HPIPM 
         # is fastest: https://cdn.syscop.de/publications/Frison2020a.pdf
         ocp.solver_options.hpipm_mode = 'SPEED_ABS'
@@ -132,7 +122,7 @@ class sqpNMPC():
         # compile acados ocp
         solver = AcadosOcpSolver(ocp)
         return solver
-    
+
 
     def run_optimization(self, x0, x_set, timer) -> np.ndarray:
         ''' Set initial state and setpoint,
@@ -154,7 +144,7 @@ class sqpNMPC():
         
         # solve for the next ctrl input
         self.solver.solve()
-        if timer: print(time.time() - st)
+        if timer: print(f"mpc runtime: {time.time() - st}")
         return
 
 
@@ -237,7 +227,7 @@ class sqpNMPC():
         axs[0].plot(t_interp,u3, label='T3')
         axs[0].plot(t_interp,u4, label='T4')
         axs[0].legend()
-        
+
         axs[1].set_ylabel('position (m)')
         axs[1].plot(t_interp,x, label='x')
         axs[1].plot(t_interp,y, label='y')
@@ -265,18 +255,18 @@ class sqpNMPC():
         for ax in axs.flat:
             ax.set(xlabel='time (s)')
             ax.label_outer()
-        
+
         plt.show()
         return
-    
+
     
     def get_interpolated_curve(self, Xs: np.ndarray, Ys: np.ndarray, N: int):
         spline_func = make_interp_spline(Xs, Ys)
         interp_x = np.linspace(Xs.min(), Xs.max(), N)
         interp_y = spline_func(interp_x)
         return interp_y
-    
-    
+
+
     def delete_compiled_files(self):
         ''' Clean up the acados generated files.
         '''

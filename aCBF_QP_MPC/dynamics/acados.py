@@ -28,6 +28,7 @@ def nonlinear_quadrotor_model(m, l, Ixx, Iyy, Izz, k,):# kf, km, Ax, Ay, Az):
         x_d, y_d, z_d, phi_d_B, theta_d_B, psi_d_B
     ))
 
+
     # rotation matrix from body frame to inertial frame
     Rx = cs.SX(cs.vertcat(
         cs.horzcat(1,            0,            0),
@@ -47,7 +48,7 @@ def nonlinear_quadrotor_model(m, l, Ixx, Iyy, Izz, k,):# kf, km, Ax, Ay, Az):
     R = Rz @ Ry @ Rx
 
     # Diagonal of inertial matrix
-    I = cs.SX(cs.vertcat(
+    J = cs.SX(cs.vertcat(
         cs.horzcat(Ixx, 0, 0),
         cs.horzcat(0, Iyy, 0),
         cs.horzcat(0, 0, Izz),
@@ -63,25 +64,25 @@ def nonlinear_quadrotor_model(m, l, Ixx, Iyy, Izz, k,):# kf, km, Ax, Ay, Az):
         x_d, y_d, z_d,
         phi_d_B, theta_d_B, psi_d_B,
         0,0,-gravity,
-        cs.inv(I) @ (cs.cross(-w_B, I @ w_B)),
+        cs.inv(J) @ (cs.cross(-w_B, J @ w_B)),
     ))
     
     g_bot = cs.SX(cs.vertcat(
         cs.horzcat(R/m, cs.SX.zeros(3,3)),
-        cs.horzcat(cs.SX.zeros(3,3), cs.inv(I))
+        cs.horzcat(cs.SX.zeros(3,3), cs.inv(J))
     ))
     u_to_g = cs.SX(cs.vertcat(
         cs.SX.zeros(2,4),
         (1/m) * cs.SX.ones(1,4),
         cs.horzcat(0, -l, 0, l),
         cs.horzcat(-l, 0, l, 0),
-        -k * cs.SX.ones(1,4),
+        cs.horzcat(-k, k, -k, k),
     ))
     g = cs.SX(cs.vertcat(
         cs.SX.zeros(6, 4),
         g_bot @ u_to_g
     ))
-    
+
     # control affine formulation
     Xdot = f + g @ u
 
