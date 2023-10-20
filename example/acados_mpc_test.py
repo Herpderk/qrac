@@ -1,11 +1,13 @@
 #!/usr/bin/python3
 
-from aCBF_QP_MPC.dynamics.acados import nonlinear_quadrotor_model
-from aCBF_QP_MPC.control.acados import SqpNmpc
-from aCBF_QP_MPC.sim.acados import SimBackend, SimFrontend
+from aCBF_QP_MPC.dynamics.acados_model import get_nonlinear_acados_model
+from aCBF_QP_MPC.control.acados_mpc import AcadosMpc
+from aCBF_QP_MPC.sim.acados_backend import AcadosBackend
+from aCBF_QP_MPC.sim.minimal_sim import MinimalSim
 
 import numpy as np
 import time
+
 
 # crazyflie system identification
 # https://www.research-collection.ethz.ch/handle/20.500.11850/214143
@@ -25,45 +27,34 @@ def main():
     max_thrust = 0.64           # N
 
 
-    T = 0.02
+    sim_T = 0.025 / 50
+    control_T = 0.025
     N = 8
     Q = np.diag(
-        [4,4,4, 2.5,2.5,2.5, 1,1,1, 1,1,1,])
+        [8,8,8, 1,1,1, 2,2,2, 1,1,1,])
     R = np.diag(
         [1, 1, 1, 1])
     u_max = max_thrust * np.ones(4)
     u_min = np.zeros(4)
 
-
     x0 = np.zeros(12)
     x_set = np.array(
-        [5,-4,10, 0,0,0, 0,0,0, 0,0,0])
+        [5,-4,10, 0,0,0, 0,0,0, 0,0,1])
 
 
-    model = nonlinear_quadrotor_model(
+    model = get_nonlinear_acados_model(
         m=m, l=l, Ixx=Ixx, Iyy=Iyy, Izz=Izz, k=k)
-    test_visual = SimFrontend(x0=x0,)
-    test_sim = SimBackend(
-        model=model, time_step=T)
-    test_mpc = SqpNmpc(
-        model=model, Q=Q, R=R, u_max=u_max, u_min=u_min, time_step=T, num_nodes=N,)
+    backend = AcadosBackend(
+        model=model, sim_step=sim_T, control_step=control_T)
+    mpc = AcadosMpc(
+        model=model, Q=Q, R=R, u_max=u_max, u_min=u_min, time_step=control_T, num_nodes=N,)
+    sim = MinimalSim(sim_backend=backend, controller=mpc, x0=x0,)
 
 
-    try:
-        x = x0
-        while True:
-            st = time.perf_counter()
-            u = test_mpc.get_next_control(x0=x, x_set=x_set, timer=True)
-            x = test_sim.run_control_loop(x0=x, u=u, timer=True)
-            test_visual.update_pose(x)
-            print(f"u: {u}")
-            print(f"x: {x}")
-            
-            while time.perf_counter() - st <= T:
-                pass
-            dt = time.perf_counter() - st
-    except KeyboardInterrupt:
-        pass
+    sim.start()
+    sim.set_setpoint(x_set)
+    time.sleep(5)
+    sim.stop()
 
 
 if __name__=="__main__":

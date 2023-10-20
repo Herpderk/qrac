@@ -4,7 +4,7 @@ import casadi as cs
 from acados_template import AcadosModel
 
 
-def nonlinear_quadrotor_model(m, l, Ixx, Iyy, Izz, k,):# kf, km, Ax, Ay, Az):
+def get_nonlinear_acados_model(m, l, Ixx, Iyy, Izz, k,):# kf, km, Ax, Ay, Az):
     ''' Returns casadi struct containing explicit dynamics,
         state, state_dot, control input, and name. 
         Nonlinear continuous-time quadrotor dynamics. 
@@ -66,7 +66,7 @@ def nonlinear_quadrotor_model(m, l, Ixx, Iyy, Izz, k,):# kf, km, Ax, Ay, Az):
         0,0,-gravity,
         cs.inv(J) @ (cs.cross(-w_B, J @ w_B)),
     ))
-    
+
     g_bot = cs.SX(cs.vertcat(
         cs.horzcat(R/m, cs.SX.zeros(3,3)),
         cs.horzcat(cs.SX.zeros(3,3), cs.inv(J))
@@ -80,8 +80,7 @@ def nonlinear_quadrotor_model(m, l, Ixx, Iyy, Izz, k,):# kf, km, Ax, Ay, Az):
     ))
     g = cs.SX(cs.vertcat(
         cs.SX.zeros(6, 4),
-        g_bot @ u_to_g
-    ))
+        g_bot @ u_to_g))
 
     # control affine formulation
     Xdot = f + g @ u

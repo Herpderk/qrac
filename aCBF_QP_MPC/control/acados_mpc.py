@@ -17,7 +17,7 @@ import shutil
 import os
 
 
-class SqpNmpc():
+class AcadosMpc():
     ''' SQP approximation of nonlinear MPC using Acados's OCP solver.
     '''
 
@@ -112,7 +112,7 @@ class SqpNmpc():
         # is fastest: https://cdn.syscop.de/publications/Frison2020a.pdf
         ocp.solver_options.hpipm_mode = 'SPEED_ABS'
         ocp.solver_options.qp_solver = 'PARTIAL_CONDENSING_HPIPM'
-        ocp.solver_options.qp_solver_iter_max = 1
+        ocp.solver_options.qp_solver_iter_max = 30
         ocp.solver_options.qp_solver_warm_start = 1
         ocp.solver_options.hessian_approx = 'GAUSS_NEWTON'
         ocp.solver_options.integrator_type = 'ERK'
@@ -128,7 +128,7 @@ class SqpNmpc():
         ''' Set initial state and setpoint,
             then solve the optimization once. 
         '''
-        if timer: st = time.time()
+        if timer: st = time.perf_counter()
 
         assert len(x0) == self.nx
         assert len(x_set) == self.nx
@@ -144,7 +144,7 @@ class SqpNmpc():
         
         # solve for the next ctrl input
         self.solver.solve()
-        if timer: print(f"mpc runtime: {time.time() - st}")
+        if timer: print(f"mpc runtime: {time.perf_counter() - st}")
         return
 
 
