@@ -31,15 +31,15 @@ def main():
     control_T = 0.025
     N = 8
     Q = np.diag(
-        [8,8,8, 1,1,1, 2,2,2, 1,1,1,])
-    R = np.diag(
+        [10,10,10, 1,1,1, 2.8,2.8,2.8, 1,1,1,])
+    R = 0.1 * np.diag(
         [1, 1, 1, 1])
     u_max = max_thrust * np.ones(4)
     u_min = np.zeros(4)
 
     x0 = np.zeros(12)
     x_set = np.array(
-        [5,-4,10, 0,0,0, 0,0,0, 0,0,1])
+        [5,-4,10, 0,0,0, 0,0,0, 0,0,0])
 
 
     model = get_nonlinear_acados_model(
@@ -53,7 +53,7 @@ def main():
 
     sim.start()
     sim.set_setpoint(x_set)
-    time.sleep(5)
+    time.sleep(30)
     sim.stop()
 
 

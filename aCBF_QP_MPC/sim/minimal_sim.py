@@ -5,7 +5,7 @@ import time
 
 
 class MinimalSim():
-    def __init__(self, sim_backend, controller, x0: np.ndarray, sprite_size=1.5,):
+    def __init__(self, sim_backend, controller, x0: np.ndarray, data_len=200, sprite_size=1.5,):
         try:
             sim_backend.run_control_loop
             sim_backend.control_step
@@ -21,12 +21,13 @@ class MinimalSim():
         self.p2 = np.array([-sprite_size / 2, 0, 0, 1])
         self.p3 = np.array([0, sprite_size / 2, 0, 1])
         self.p4 = np.array([0, -sprite_size / 2, 0, 1])
-        #self.pts = np.block([p1, p2, p3, p4])
 
         self.x = mp.Array("f", x0)
         self.x_set = mp.Array("f", x0)
         self.run_flag = mp.Value("b", False)
-        self.pos_history = np.empty((3, 100000))
+
+        self.pose_data = np.empty((data_len, 3))
+        self.data_ind = 0
         self.fig, self.ax = self.init_fig()
         
         self.frontend_proc = mp.Process(target=self.run_frontend, args=[])
@@ -35,11 +36,19 @@ class MinimalSim():
 
     def init_fig(self):
         plt.ion()
-        fig = plt.figure(figsize=(10,6))
+        fig = plt.figure(figsize=(11,11))
+        fig.canvas.mpl_connect('key_release_event',
+            lambda event: [exit(0) if event.key == 'escape' else None])
         ax = fig.add_subplot(projection="3d")
-        #fig.canvas.mpl_connect('key_release_event',
-        #    lambda event: [exit(0) if event.key == 'escape' else None])
         return fig, ax
+
+
+    def update_data(self, x):
+        self.pose_data[self.data_ind] = x[:3]
+        if self.data_ind >= len(self.pose_data)-1:
+            self.data_ind = 0
+        else:
+            self.data_ind += 1
 
 
     def get_transform(self, x: np.ndarray):
@@ -59,14 +68,14 @@ class MinimalSim():
             [          0,               0,      1],
         ])
         R = Rz @ Ry @ Rx
-        T = np.block(
-            [R, np.reshape(x[0:3], (3,1))])
+        T = np.block([R, np.reshape(x[:3], (3,1))])
         return T
 
 
     def plot(self, x: np.ndarray, timer=False):
         if timer: st = time.perf_counter()
-
+        
+        self.update_data(x)
         T = self.get_transform(x)
         p1_t = T @ self.p1
         p2_t = T @ self.p2
@@ -76,13 +85,13 @@ class MinimalSim():
         plt.cla()
         self.ax.plot([p1_t[0], p2_t[0], p3_t[0], p4_t[0]],
                      [p1_t[1], p2_t[1], p3_t[1], p4_t[1]],
-                     [p1_t[2], p2_t[2], p3_t[2], p4_t[2]], 'k.')
-        
+                     [p1_t[2], p2_t[2], p3_t[2], p4_t[2]], 'k.', markersize=9)
         self.ax.plot([p1_t[0], p2_t[0]], [p1_t[1], p2_t[1]],
-                     [p1_t[2], p2_t[2]], 'b-', linewidth=2)
+                     [p1_t[2], p2_t[2]], 'b-', linewidth=3)
         self.ax.plot([p3_t[0], p4_t[0]], [p3_t[1], p4_t[1]],
-                     [p3_t[2], p4_t[2]], 'b-', linewidth=2)
-        #self.ax.plot(self.x_data, self.y_data, self.z_data, 'r-')
+                     [p3_t[2], p4_t[2]], 'b-', linewidth=3)
+        self.ax.plot(self.pose_data[:,0], self.pose_data[:,1],
+                     self.pose_data[:,2], 'r.', markersize=1)
 
         plt.xlim(-10, 10)
         plt.ylim(-10, 10)
@@ -113,6 +122,7 @@ class MinimalSim():
     def run_frontend(self,):
         while self.run_flag.value:
             self.plot(self.x[:])
+        plt.ioff()
         plt.close()
 
 

@@ -112,7 +112,7 @@ class AcadosMpc():
         # is fastest: https://cdn.syscop.de/publications/Frison2020a.pdf
         ocp.solver_options.hpipm_mode = 'SPEED_ABS'
         ocp.solver_options.qp_solver = 'PARTIAL_CONDENSING_HPIPM'
-        ocp.solver_options.qp_solver_iter_max = 30
+        ocp.solver_options.qp_solver_iter_max = 50
         ocp.solver_options.qp_solver_warm_start = 1
         ocp.solver_options.hessian_approx = 'GAUSS_NEWTON'
         ocp.solver_options.integrator_type = 'ERK'
