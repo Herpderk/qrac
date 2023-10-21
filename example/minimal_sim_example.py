@@ -49,7 +49,7 @@ def main():
     # run simulator for 15 seconds
     x_set = np.array([5,-4,10, 0,0,0, 0,0,0, 0,0,0])
     sim.start()
-    sim.set_setpoint(x_set)
+    sim.update_setpoint(x_set)
     time.sleep(15)
     sim.stop()
 

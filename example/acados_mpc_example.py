@@ -39,7 +39,7 @@ def main():
     # run a single control loop with trajectory prediction
     x0 = np.zeros(12)
     x_set = np.array([5,-4,10, 0,0,0, 0,0,0, 0,0,0])
-    mpc.get_next_state(x0, x_set, timer=True, visuals=True)
+    mpc.get_state(x0, x_set, timer=True, visuals=True)
 
 
 if __name__=="__main__":

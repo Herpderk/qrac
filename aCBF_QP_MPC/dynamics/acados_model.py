@@ -5,24 +5,32 @@ from acados_template import AcadosModel
 
 
 def get_nonlinear_acados_model(m, l, Ixx, Iyy, Izz, k,):# kf, km, Ax, Ay, Az):
-    ''' Returns casadi struct containing explicit dynamics,
-        state, state_dot, control input, and name. 
-        Nonlinear continuous-time quadrotor dynamics. 
-        The cartesian states are in ENU.
-    '''
+    """
+    Returns casadi struct containing explicit dynamics,
+    state, state_dot, control input, and name. 
+    Nonlinear continuous-time quadrotor dynamics. 
+    The cartesian states are in ENU.
+    """
+    assert (type(m) == int or type(m) == float)
+    assert (type(l) == int or type(l) == float)
+    assert (type(Ixx) == int or type(Ixx) == float)
+    assert (type(Iyy) == int or type(Iyy) == float)
+    assert (type(Izz) == int or type(Izz) == float)
+    assert (type(k) == int or type(k) == float)
+
     # State Variables: position, rotation, velocity, and body-frame angular velocity
-    x = cs.SX.sym('x')
-    y = cs.SX.sym('y')
-    z = cs.SX.sym('z')
-    phi = cs.SX.sym('phi')     # roll
-    theta = cs.SX.sym('theta') # pitch
-    psi = cs.SX.sym('psi')     # yaw
-    x_d = cs.SX.sym('x_d')     # time-derivatives
-    y_d = cs.SX.sym('y_d')
-    z_d = cs.SX.sym('z_d')
-    phi_d_B = cs.SX.sym('phi_d_B')
-    theta_d_B = cs.SX.sym('theta_d_B')
-    psi_d_B = cs.SX.sym('psi_d_B')
+    x = cs.SX.sym("x")
+    y = cs.SX.sym("y")
+    z = cs.SX.sym("z")
+    phi = cs.SX.sym("phi")     # roll
+    theta = cs.SX.sym("theta") # pitch
+    psi = cs.SX.sym("psi")     # yaw
+    x_d = cs.SX.sym("x_d")     # time-derivatives
+    y_d = cs.SX.sym("y_d")
+    z_d = cs.SX.sym("z_d")
+    phi_d_B = cs.SX.sym("phi_d_B")
+    theta_d_B = cs.SX.sym("theta_d_B")
+    psi_d_B = cs.SX.sym("psi_d_B")
     X = cs.SX(cs.vertcat(
         x, y, z, phi, theta, psi,\
         x_d, y_d, z_d, phi_d_B, theta_d_B, psi_d_B
@@ -55,7 +63,7 @@ def get_nonlinear_acados_model(m, l, Ixx, Iyy, Izz, k,):# kf, km, Ax, Ay, Az):
     ))
 
     # thrust of motors 1 to 4
-    u = cs.SX.sym('u', 4)
+    u = cs.SX.sym("u", 4)
 
     # continuous-time dynamics
     gravity = 9.81              # acceleration due to gravity
