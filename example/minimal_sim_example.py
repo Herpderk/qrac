@@ -44,7 +44,7 @@ def main():
 
     # initialize simulator
     x0 = np.zeros(12)
-    sim = MinimalSim(sim_backend=backend, controller=mpc, x0=x0,)
+    sim = MinimalSim(backend=backend, controller=mpc, x0=x0,)
 
     # run simulator for 15 seconds
     x_set = np.array([5,-4,10, 0,0,0, 0,0,0, 0,0,0])
