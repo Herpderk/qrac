@@ -60,7 +60,7 @@ class MinimalSim():
 
     def _init_fig(self):
         plt.ion()
-        fig = plt.figure(figsize=(11,11))
+        fig = plt.figure(figsize=(9,10))
         fig.canvas.mpl_connect("key_release_event",
             lambda event: [exit(0) if event.key == "escape" else None])
         ax = fig.add_subplot(projection="3d")
@@ -68,11 +68,17 @@ class MinimalSim():
 
 
     def _update_data(self, x):
-        self._pose_data[self._data_ind] = x[:3]
-        if self._data_ind >= len(self._pose_data)-1:
-            self._data_ind = 0
+        curr_pose = x[:3]
+        prev_pose = self._pose_data[self._data_ind-1]
+        dist = np.linalg.norm(curr_pose-prev_pose)
+        if dist < 0.1:
+            pass
         else:
-            self._data_ind += 1
+            self._pose_data[self._data_ind] = x[:3]
+            if self._data_ind >= len(self._pose_data)-1:
+                self._data_ind = 0
+            else:
+                self._data_ind += 1
 
 
     def _get_transform(self, x: np.ndarray):
@@ -96,43 +102,57 @@ class MinimalSim():
         return T
 
 
-    def _update_visual(self, x: np.ndarray, timer=False):
-        if timer: st = time.perf_counter()
-
-        self._update_data(x)
+    def _transform_quad(self, x):
         T = self._get_transform(x)
         p1_t = T @ self._p1
         p2_t = T @ self._p2
         p3_t = T @ self._p3
         p4_t = T @ self._p4
+        return p1_t, p2_t, p3_t, p4_t
 
-        plt.cla()
-        self._ax.plot([p1_t[0], p2_t[0], p3_t[0], p4_t[0]],
-                     [p1_t[1], p2_t[1], p3_t[1], p4_t[1]],
-                     [p1_t[2], p2_t[2], p3_t[2], p4_t[2]], "k.", markersize=9)
-        self._ax.plot([p1_t[0], p2_t[0]], [p1_t[1], p2_t[1]],
-                     [p1_t[2], p2_t[2]], "b-", linewidth=3)
-        self._ax.plot([p3_t[0], p4_t[0]], [p3_t[1], p4_t[1]],
-                     [p3_t[2], p4_t[2]], "b-", linewidth=3)
+
+    def _plot_quad(self, p1, p2, p3, p4):
+        self._ax.plot([p1[0], p2[0], p3[0], p4[0]],
+                     [p1[1], p2[1], p3[1], p4[1]],
+                     [p1[2], p2[2], p3[2], p4[2]], "k.", markersize=9)
+        self._ax.plot([p1[0], p2[0]], [p1[1], p2[1]],
+                     [p1[2], p2[2]], "b-", linewidth=3)
+        self._ax.plot([p3[0], p4[0]], [p3[1], p4[1]],
+                     [p3[2], p4[2]], "b-", linewidth=3)
         self._ax.plot(self._pose_data[:,0], self._pose_data[:,1],
                      self._pose_data[:,2], "r.", markersize=1)
 
+
+    def _set_plot_settings(self,):
         self._ax.set_xlim(-10,10)
         self._ax.set_ylim(-10,10)
         self._ax.set_zlim(0, 10)
         self._ax.set_xticks(range(-10, 10, 2))
         self._ax.set_yticks(range(-10, 10, 2))
         self._ax.set_zticks(range(0, 11, 2))
-        self._ax.set_xlabel("$x$", fontsize=15)
-        self._ax.set_ylabel("$y$", fontsize=15)
-        self._ax.set_zlabel("$z$", fontsize=15)
+        self._ax.xaxis.set_rotate_label(False)
+        self._ax.set_xlabel(r"$\bf{x}$", fontsize=15)
+        self._ax.yaxis.set_rotate_label(False)
+        self._ax.set_ylabel(r"$\bf{y}$", fontsize=15)
+        self._ax.zaxis.set_rotate_label(False)
+        self._ax.set_zlabel(r"$\bf{z}$", fontsize=15,)
         plt.pause(0.00001)
+
+
+    def _plot(self, x: np.ndarray, timer=False):
+        st = time.perf_counter()
+        self._update_data(x)
+        p1, p2, p3, p4 = self._transform_quad(x)
+
+        plt.cla()
+        self._plot_quad(p1, p2, p3, p4)
+        self._set_plot_settings()
         if timer: print(f"render runtime: {time.perf_counter() - st}")
 
 
     def _run_frontend(self,):
         while self._run_flag.value:
-            self._update_visual(self._x[:])
+            self._plot(self._x[:], timer=True)
         plt.ioff()
         plt.close()
 

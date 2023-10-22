@@ -30,7 +30,7 @@ class AcadosMpc():
         Q & R cost matrices, maximum and minimum thrusts, time-step,
         and number of shooting nodes (length of prediction horizon)
         """
-        self._nx, self._nu = self._get_model_dims(model)
+        self._nx, self._nu = self._get_dims(model)
 
         assert Q.shape == (self._nx, self._nx)
         assert R.shape == (self._nu, self._nu)
@@ -44,7 +44,7 @@ class AcadosMpc():
         self._solver = self._init_solver(model, Q, R, u_max, u_min)
 
         # deleting acados compiled files when script is terminated.
-        atexit.register(self._delete_compiled_files)
+        atexit.register(self._clear_files)
 
 
     @property
@@ -56,7 +56,7 @@ class AcadosMpc():
         """
         Get the first control action from the optimization.
         """
-        self._run_solver(x0, x_set, timer)
+        self._solve(x0, x_set, timer)
         nxt_ctrl = self._solver.get(0, "u")
         return nxt_ctrl
 
@@ -65,7 +65,7 @@ class AcadosMpc():
         """
         Get the next state from the optimization.
         """
-        self._run_solver(x0, x_set, timer)
+        self._solve(x0, x_set, timer)
         nxt_state = self._solver.get(1, "x")
 
         if visuals:
@@ -78,7 +78,7 @@ class AcadosMpc():
         return nxt_state
 
 
-    def _run_solver(self, x0, x_set, timer) -> np.ndarray:
+    def _solve(self, x0, x_set, timer) -> np.ndarray:
         """
         Set initial state and setpoint,
         then solve the optimization once. 
@@ -103,7 +103,7 @@ class AcadosMpc():
         return
 
 
-    def _get_model_dims(self, model):
+    def _get_dims(self, model):
         """
         Acados model format:
         f_imp_expr/f_expl_expr, x, xdot, u, name 
@@ -129,8 +129,7 @@ class AcadosMpc():
         ocp.dims.ny = ny
         ocp.dims.nbx_0 = self._nx
         ocp.dims.nbu = self._nu
-        #ocp.dims.nbx = 4    # number of states being constrained
-
+        ocp.dims.nbx = 3    # number of states being constrained
 
         # total horizon in seconds
         ocp.solver_options.tf = self._dt*self._N  
@@ -161,18 +160,17 @@ class AcadosMpc():
         ocp.constraints.lbu = u_min
         ocp.constraints.ubu = u_max
         ocp.constraints.idxbu = np.arange(self._nu)
-        """
+
         # state constraints: z, roll, pitch, yaw
-        inf = 1000000000
-        ocp.constraints.lbx = np.array([0, -pi/2, -pi/2, 0])
-        ocp.constraints.ubx = np.array([inf, pi/2, pi/2, 2*pi])
-        ocp.constraints.idxbx = np.array([2, 3, 4, 5])
-        """
+        ocp.constraints.lbx = np.array([-10, -10, 0,])# -10, -10, -10])
+        ocp.constraints.ubx = np.array([10, 10, 10,])# 10, 10, 10])
+        ocp.constraints.idxbx = np.array([0, 1, 2,])# 6, 7, 8])
+
         # not sure what this is, but this paper say partial condensing HPIPM 
         # is fastest: https://cdn.syscop.de/publications/Frison2020a.pdf
         ocp.solver_options.hpipm_mode = "SPEED_ABS"
         ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
-        ocp.solver_options.qp_solver_iter_max = 50
+        ocp.solver_options.qp_solver_iter_max = 30
         ocp.solver_options.qp_solver_warm_start = 1
         ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
         ocp.solver_options.integrator_type = "ERK"
@@ -219,21 +217,20 @@ class AcadosMpc():
     def _plot_trajectory(self, ax, traj: np.ndarray, xvals: np.ndarray, interp_N: int, legend: List[str], ylabel: str,):
         ax.set_ylabel(ylabel)
         for i in range(traj.shape[1]):
-            x_interp = self._get_interpolated_curve(xvals, xvals, interp_N)
-            y_interp = self._get_interpolated_curve(xvals, traj[:,i], interp_N)
-
+            x_interp = self._get_interpolation(xvals, xvals, interp_N)
+            y_interp = self._get_interpolation(xvals, traj[:,i], interp_N)
             ax.plot(x_interp, y_interp , label=legend[i])
         ax.legend()
 
 
-    def _get_interpolated_curve(self, Xs: np.ndarray, Ys: np.ndarray, N: int):
+    def _get_interpolation(self, Xs: np.ndarray, Ys: np.ndarray, N: int):
         spline_func = make_interp_spline(Xs, Ys)
         interp_x = np.linspace(Xs.min(), Xs.max(), N)
         interp_y = spline_func(interp_x)
         return interp_y
 
 
-    def _delete_compiled_files(self):
+    def _clear_files(self):
         """
         Clean up the acados generated files.
         """

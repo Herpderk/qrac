@@ -14,9 +14,9 @@ class AcadosBackend():
         assert (type(control_step) == int or type(control_step) == float)
         assert control_step > sim_step
 
-        self._nx, self._nu = self._get_model_dims(model)
+        self._nx, self._nu = self._get_dims(model)
         self._solver = self._init_solver(model, sim_step, control_step)
-        atexit.register(self._delete_compiled_files)
+        atexit.register(self._clear_files)
 
 
     @property
@@ -29,12 +29,12 @@ class AcadosBackend():
 
 
     def update(self, x0: np.ndarray, u: np.ndarray, timer=False):
-        self._run_solver(x0, u, timer)
+        self._solve(x0, u, timer)
         x = self._solver.get("x")
         return x
 
 
-    def _run_solver(self, x0, u, timer):
+    def _solve(self, x0, u, timer):
         st = time.perf_counter()
         assert len(x0) == self._nx
         assert len(u) == self._nu
@@ -48,7 +48,7 @@ class AcadosBackend():
             print(f"sim runtime: {time.perf_counter() - st}")        
 
 
-    def _get_model_dims(self, model):
+    def _get_dims(self, model):
         nx = model.x.shape[0]
         nu = model.u.shape[0]
         return nx, nu
@@ -65,7 +65,7 @@ class AcadosBackend():
         return solver
 
 
-    def _delete_compiled_files(self):
+    def _clear_files(self):
         """
         Clean up the acados generated files.
         """

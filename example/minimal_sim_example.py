@@ -27,13 +27,13 @@ def main():
         m=m, l=l, Ixx=Ixx, Iyy=Iyy, Izz=Izz, k=k)
 
     # initialize controller
-    Q = np.diag([10,10,10, 1,1,1, 2.8,2.8,2.8, 1,1,1,])
-    R = 0.1 * np.diag([1, 1, 1, 1])
+    Q = np.diag([8,8,8, 1,1,1, 1,1,1, 1,1,1,])
+    R = 0.01 * np.diag([1, 1, 1, 1])
     max_thrust = 0.64           # N
     u_max = max_thrust * np.ones(4)
     u_min = np.zeros(4)
-    control_T = 0.025
-    N = 8
+    control_T = 0.02
+    N = 6
     mpc = AcadosMpc(
         model=model, Q=Q, R=R, u_max=u_max, u_min=u_min, time_step=control_T, num_nodes=N,)
 
@@ -47,10 +47,15 @@ def main():
     sim = MinimalSim(backend=backend, controller=mpc, x0=x0,)
 
     # run simulator for 15 seconds
-    x_set = np.array([5,-4,10, 0,0,0, 0,0,0, 0,0,0])
+    sim_start = time.perf_counter()
     sim.start()
-    sim.update_setpoint(x_set)
-    time.sleep(15)
+    while time.perf_counter()-sim_start < 60:
+        t = time.perf_counter()
+        x = 8 * np.cos(t)
+        y = 8 * np.sin(t)
+        z = 8
+        x_set = np.array([x,y,z, 0,0,0, 0,0,0, 0,0,0])
+        sim.update_setpoint(x_set)
     sim.stop()
 
 
