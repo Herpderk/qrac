@@ -5,10 +5,16 @@ import numpy as np
 import time
 import atexit
 import os
+from typing import Tuple
 
 
 class AcadosBackend():
-    def __init__(self, model, sim_step, control_step,):
+    def __init__(
+        self,
+        model,
+        sim_step,
+        control_step,
+    ) -> None:
         assert type(model) == AcadosModel
         assert (type(sim_step) == int or type(sim_step) == float)
         assert (type(control_step) == int or type(control_step) == float)
@@ -20,21 +26,32 @@ class AcadosBackend():
 
 
     @property
-    def nx(self,):
+    def nx(self) -> int:
         return self._nx
-    
+
+
     @property
-    def nu(self,):
+    def nu(self) -> int:
         return self._nu
 
 
-    def update(self, x0: np.ndarray, u: np.ndarray, timer=False):
+    def update(
+        self,
+        x0: np.ndarray,
+        u: np.ndarray,
+        timer=False,
+    ) -> np.ndarray:
         self._solve(x0, u, timer)
         x = self._solver.get("x")
         return x
 
 
-    def _solve(self, x0, u, timer):
+    def _solve(
+        self,
+        x0: np.ndarray,
+        u: np.ndarray,
+        timer: bool,
+    ) -> None:
         st = time.perf_counter()
         assert len(x0) == self._nx
         assert len(u) == self._nu
@@ -48,13 +65,21 @@ class AcadosBackend():
             print(f"sim runtime: {time.perf_counter() - st}")        
 
 
-    def _get_dims(self, model):
+    def _get_dims(
+        self,
+        model: AcadosModel
+    ) -> Tuple[int]:
         nx = model.x.shape[0]
         nu = model.u.shape[0]
         return nx, nu
 
 
-    def _init_solver(self, model, sim_step, control_step):
+    def _init_solver(
+        self,
+        model: AcadosModel,
+        sim_step: float,
+        control_step: float,
+    ) -> AcadosSimSolver:
         sim = AcadosSim()
         sim.model = model
         sim.solver_options.T = control_step
@@ -65,7 +90,7 @@ class AcadosBackend():
         return solver
 
 
-    def _clear_files(self):
+    def _clear_files(self) -> None:
         """
         Clean up the acados generated files.
         """

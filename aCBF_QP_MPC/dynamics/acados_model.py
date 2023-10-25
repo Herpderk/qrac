@@ -4,19 +4,28 @@ import casadi as cs
 from acados_template import AcadosModel
 
 
-def get_nonlinear_acados_model(m, l, Ixx, Iyy, Izz, k,):# kf, km, Ax, Ay, Az):
+def NonlinearQuadrotor(
+    m: float,
+    l1: float,
+    l2: float,
+    l3: float,
+    l4: float,
+    Ixx: float,
+    Iyy: float,
+    Izz: float,
+    k: float,
+    Ax: float,
+    Ay: float,
+    Az: float,
+) -> AcadosModel:
     """
     Returns casadi struct containing explicit dynamics,
     state, state_dot, control input, and name. 
     Nonlinear continuous-time quadrotor dynamics. 
     The cartesian states are in ENU.
     """
-    assert (type(m) == int or type(m) == float)
-    assert (type(l) == int or type(l) == float)
-    assert (type(Ixx) == int or type(Ixx) == float)
-    assert (type(Iyy) == int or type(Iyy) == float)
-    assert (type(Izz) == int or type(Izz) == float)
-    assert (type(k) == int or type(k) == float)
+    for arg in [m, l1, l2, l3, l4, Ixx, Iyy, Izz, k, Ax, Ay, Az]:
+        assert (type(arg) == int or type(arg) == float)
 
     # State Variables: position, rotation, velocity, and body-frame angular velocity
     x = cs.SX.sym("x")
@@ -36,13 +45,12 @@ def get_nonlinear_acados_model(m, l, Ixx, Iyy, Izz, k,):# kf, km, Ax, Ay, Az):
         x_d, y_d, z_d, phi_d_B, theta_d_B, psi_d_B
     ))
 
-
     # rotation matrix from body frame to inertial frame
     Rx = cs.SX(cs.vertcat(
         cs.horzcat(1,            0,            0),
         cs.horzcat(0,  cs.cos(phi), -cs.sin(phi)),
         cs.horzcat(0,  cs.sin(phi),  cs.cos(phi)),
-    ))
+))
     Ry = cs.SX(cs.vertcat(
         cs.horzcat( cs.cos(theta),  0,  cs.sin(theta)),
         cs.horzcat(             0,  1,              0),
@@ -66,12 +74,18 @@ def get_nonlinear_acados_model(m, l, Ixx, Iyy, Izz, k,):# kf, km, Ax, Ay, Az):
     u = cs.SX.sym("u", 4)
 
     # continuous-time dynamics
-    gravity = 9.81              # acceleration due to gravity
+    gravity = cs.SX(cs.vertcat(0, 0, -9.81))
+    v = cs.SX(cs.vertcat(x_d, y_d, z_d))
     w_B = cs.SX(cs.vertcat(phi_d_B, theta_d_B, psi_d_B))
+    A = cs.SX(cs.vertcat(
+        cs.horzcat(Ax, 0, 0),
+        cs.horzcat(0, Ay, 0),
+        cs.horzcat(0, 0, Az),
+    ))
     f = cs.SX(cs.vertcat(
-        x_d, y_d, z_d,
-        phi_d_B, theta_d_B, psi_d_B,
-        0,0,-gravity,
+        v,
+        w_B,
+        gravity - A @ v,
         cs.inv(J) @ (cs.cross(-w_B, J @ w_B)),
     ))
 
@@ -82,8 +96,8 @@ def get_nonlinear_acados_model(m, l, Ixx, Iyy, Izz, k,):# kf, km, Ax, Ay, Az):
     u_to_g = cs.SX(cs.vertcat(
         cs.SX.zeros(2,4),
         (1/m) * cs.SX.ones(1,4),
-        cs.horzcat(0, -l, 0, l),
-        cs.horzcat(-l, 0, l, 0),
+        cs.horzcat(0, -l2, 0, l4),
+        cs.horzcat(-l1, 0, l3, 0),
         cs.horzcat(-k, k, -k, k),
     ))
     g = cs.SX(cs.vertcat(
@@ -99,6 +113,29 @@ def get_nonlinear_acados_model(m, l, Ixx, Iyy, Izz, k,):# kf, km, Ax, Ay, Az):
     model.x = X
     model.xdot = Xdot
     model.u = u 
-    model.name = "nonlinear_quadrotor_model"
+    model.name = "nonlinear_quadrotor"
     return model
 
+
+def NonlinearCrazyflie(
+    Ax: float,
+    Ay: float,
+    Az: float,
+) -> AcadosModel:
+    """
+    crazyflie system identification:
+    https://www.research-collection.ethz.ch/handle/20.500.11850/214143
+    """
+    m = 0.028                   # kg
+    l1 = 0.040                   # m
+    l2 = 0.040
+    l3 = 0.040
+    l4 = 0.040
+    Ixx = 3.144988 * 10**(-5)
+    Iyy = 3.151127 * 10**(-5)
+    Izz = 7.058874 * 10**(-5)
+    k = 0.005964552             # k is the ratio of torque to thrust
+    Ax = 0
+    Ay = 0
+    Az = 0
+    return NonlinearQuadrotor(m, l1, l2, l3, l4, Ixx, Iyy, Izz, k, Ax, Ay, Az)
