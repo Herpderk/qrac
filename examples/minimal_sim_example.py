@@ -1,9 +1,9 @@
 #!/usr/bin/python3
 
-from ractoolbox.dynamics.acados_model import NonlinearCrazyflie
-from ractoolbox.control.acados_mpc import AcadosMpc
-from ractoolbox.sim.acados_backend import AcadosBackend
-from ractoolbox.sim.minimal_sim import MinimalSim
+from qrac.dynamics.acados_model import NonlinearCrazyflie
+from qrac.control.acados_mpc import AcadosMpc
+from qrac.sim.acados_backend import AcadosBackend
+from qrac.sim.minimal_sim import MinimalSim
 import numpy as np
 import time
 
