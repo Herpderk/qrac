@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from aCBF_QP_MPC.dynamics.acados_model import get_nonlinear_acados_model
+from aCBF_QP_MPC.dynamics.acados_model import NonlinearCrazyflie
 from aCBF_QP_MPC.control.acados_mpc import AcadosMpc
 from aCBF_QP_MPC.sim.acados_backend import AcadosBackend
 from aCBF_QP_MPC.sim.minimal_sim import MinimalSim
@@ -8,23 +8,8 @@ import numpy as np
 import time
 
 
-# crazyflie system identification
-# https://www.research-collection.ethz.ch/handle/20.500.11850/214143
-
-
 def main():
-    # Initialize model (SI units)
-    m = 0.028                   # kg
-    l = 0.040                   # m
-    Ixx = 3.144988 * 10**(-5)
-    Iyy = 3.151127 * 10**(-5)
-    Izz = 7.058874 * 10**(-5)
-    k = 0.005964552             # k is the ratio of torque to thrust
-    Ax = 0
-    Ay = 0
-    Az = 0
-    model = get_nonlinear_acados_model(
-        m=m, l=l, Ixx=Ixx, Iyy=Iyy, Izz=Izz, k=k)
+    model = NonlinearCrazyflie(Ax=0, Ay=0, Az=0)
 
     # initialize controller
     Q = np.diag([8,8,8, 1,1,1, 1,1,1, 1,1,1,])
@@ -43,20 +28,28 @@ def main():
         model=model, sim_step=sim_T, control_step=control_T)
 
     # initialize simulator
-    x0 = np.zeros(12)
-    sim = MinimalSim(backend=backend, controller=mpc, x0=x0,)
+    lb_pose = [-5, -5, 0]
+    ub_pose = [5, 5, 10]
+    sim = MinimalSim(
+        backend=backend, controller=mpc, lb_pose=lb_pose, ub_pose=ub_pose,)
 
-    # run simulator for 15 seconds
-    sim_start = time.perf_counter()
-    sim.start()
-    while time.perf_counter()-sim_start < 60:
-        t = time.perf_counter()
-        x = 8 * np.cos(t)
-        y = 8 * np.sin(t)
-        z = 8
-        x_set = np.array([x,y,z, 0,0,0, 0,0,0, 0,0,0])
-        sim.update_setpoint(x_set)
+    # Run the sim for N control loops
+    x0 = np.zeros(12)
+    x_set = np.array([-1, 2, 5, 0,0,0, 0,0,0, 0,0,0])
+
+    # You can also run it indefinitely if 'max_steps' is not specified
+    while sim.is_alive:
+        pass
+    sim.start(x0=x0)
+    sim.update_setpoint(x_set=x_set)
+    time.sleep(5)
     sim.stop()
+
+    #N = 50
+    #sim.start(x0=x0, max_steps=N)
+    #sim.update_setpoint(x_set=x_set)
+
+
 
 
 if __name__=="__main__":
