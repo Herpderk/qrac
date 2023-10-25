@@ -15,11 +15,7 @@ class AcadosBackend():
         sim_step,
         control_step,
     ) -> None:
-        assert type(model) == AcadosModel
-        assert (type(sim_step) == int or type(sim_step) == float)
-        assert (type(control_step) == int or type(control_step) == float)
-        assert control_step > sim_step
-
+        self._assert(model, sim_step, control_step)
         self._nx, self._nu = self._get_dims(model)
         self._solver = self._init_solver(model, sim_step, control_step)
         atexit.register(self._clear_files)
@@ -88,6 +84,26 @@ class AcadosBackend():
         sim.solver_options.num_steps = int(round(control_step / sim_step))
         solver = AcadosSimSolver(sim)
         return solver
+
+
+    def _assert(
+        self,
+        model: AcadosModel,
+        sim_step: float,
+        control_step: float,
+    ) -> None:
+        if type(model) != AcadosModel:
+            raise TypeError(
+                "The inputted model must be of type 'AcadosModel'!")
+        if (type(sim_step) != int and type(sim_step) != float):
+            raise TypeError(
+                "Please input the desired simulator step as an integer or float!")
+        if (type(control_step) != int and type(control_step) != float):
+            raise TypeError(
+                "Please input the desired control loop step as an integer or float!")
+        if control_step < sim_step:
+            raise ValueError(
+                "The control step should be greater than or equal to the simulator step!")        
 
 
     def _clear_files(self) -> None:

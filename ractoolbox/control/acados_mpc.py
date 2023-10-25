@@ -41,15 +41,7 @@ class AcadosMpc:
         and number of shooting nodes (length of prediction horizon)
         """
         self._nx, self._nu = self._get_dims(model)
-
-        assert type(model) == AcadosModel
-        assert Q.shape == (self._nx, self._nx)
-        assert R.shape == (self._nu, self._nu)
-        assert len(u_max) == self._nu
-        assert len(u_min) == self._nu
-        assert type(time_step) == int or type(time_step) == float
-        assert type(num_nodes) == int
-
+        self._assert(model, Q, R, u_max, u_min, time_step, num_nodes)
         self._dt = time_step
         self._N = num_nodes
         self._u_min = u_min
@@ -297,6 +289,42 @@ class AcadosMpc:
         interp_x = np.linspace(Xs.min(), Xs.max(), N)
         interp_y = spline_func(interp_x)
         return interp_y
+
+
+    def _assert(
+        self,
+        model: AcadosModel,
+        Q: np.ndarray,
+        R: np.ndarray,
+        u_max: np.ndarray,
+        u_min: np.ndarray,
+        time_step: float,
+        num_nodes: int,
+    ) -> None:
+        if type(model) != AcadosModel:
+            raise TypeError(
+                "The inputted model must be of type 'AcadosModel'!")
+        if type(Q) != np.ndarray:
+            raise TypeError(
+                "Please input the cost matrix as a numpy array!")
+        if type(R) != np.ndarray:
+            raise TypeError(
+                "Please input the cost matrix as a numpy array!")
+        if Q.shape != (self._nx, self._nx):
+            raise ValueError(
+                "Please input the state cost matrix with appropriate dimensions!")
+        if R.shape != (self._nu, self._nu):
+            raise ValueError(
+                "Please input the control cost matrix with appropriate dimensions!")
+        if len(u_max) != self._nu or len(u_min) != self._nu:
+            raise ValueError(
+                "Please input the maximum control input with appropriate dimensions!")
+        if type(time_step) != int and type(time_step) != float:
+            raise ValueError(
+                "Please input the control loop step as an integer or float!")
+        if type(num_nodes) != int:
+            raise ValueError(
+                "Please input the number of shooting nodes as an integer!")
 
 
     def _clear_files(self) -> None:
