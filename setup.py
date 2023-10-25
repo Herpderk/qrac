@@ -1,10 +1,10 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='aCBF_QP_MPC',
+    name='ractoolbox',
     version='0.0.0',
     packages=find_packages(include=[
-        'aCBF_QP_MPC', 'aCBF_QP_MPC.*'
+        'ractoolbox', 'ractoolbox.*'
     ]),
     install_requires=[
         'numpy',

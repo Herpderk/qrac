@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
-from aCBF_QP_MPC.dynamics.acados_model import NonlinearCrazyflie
-from aCBF_QP_MPC.control.acados_mpc import AcadosMpc
+from ractoolbox.dynamics.acados_model import NonlinearCrazyflie
+from ractoolbox.control.acados_mpc import AcadosMpc
 import numpy as np
 
 
