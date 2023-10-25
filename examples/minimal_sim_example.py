@@ -12,13 +12,13 @@ def main():
     model = NonlinearCrazyflie(Ax=0, Ay=0, Az=0)
 
     # initialize controller
-    Q = np.diag([8,8,8, 1,1,1, 1,1,1, 1,1,1,])
+    Q = np.diag([6,6,6, 1,1,1, 2,2,2, 1,1,1,])
     R = 0.01 * np.diag([1, 1, 1, 1])
     max_thrust = 0.64           # N
     u_max = max_thrust * np.ones(4)
     u_min = np.zeros(4)
     control_T = 0.02
-    N = 6
+    N = 20
     mpc = AcadosMpc(
         model=model, Q=Q, R=R, u_max=u_max, u_min=u_min, time_step=control_T, num_nodes=N,)
 
@@ -28,28 +28,23 @@ def main():
         model=model, sim_step=sim_T, control_step=control_T)
 
     # initialize simulator
-    lb_pose = [-5, -5, 0]
-    ub_pose = [5, 5, 10]
+    lb_pose = [-10, -10, 0]
+    ub_pose = [10, 10, 10]
     sim = MinimalSim(
         backend=backend, controller=mpc, lb_pose=lb_pose, ub_pose=ub_pose,)
 
-    # Run the sim for N control loops
+    # define the initial state and setpoint
     x0 = np.zeros(12)
-    x_set = np.array([-1, 2, 5, 0,0,0, 0,0,0, 0,0,0])
+    x_set = np.array([-4, -4, 6, 0,0,0, 0,0,0, 0,0,0])
 
-    # You can also run it indefinitely if 'max_steps' is not specified
-    while sim.is_alive:
-        pass
-    sim.start(x0=x0)
+    # Run the sim for N control loops
+    N = int(round(15 / control_T))      # 15 seconds worth of control steps
+    sim.start(x0=x0, max_steps=N)
     sim.update_setpoint(x_set=x_set)
-    time.sleep(5)
+    
+    # You can also end the sim early with 'stop'
+    time.sleep(10)
     sim.stop()
-
-    #N = 50
-    #sim.start(x0=x0, max_steps=N)
-    #sim.update_setpoint(x_set=x_set)
-
-
 
 
 if __name__=="__main__":
