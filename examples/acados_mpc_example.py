@@ -1,12 +1,14 @@
 #!/usr/bin/python3
 
-from qrac.dynamics.acados_model import NonlinearCrazyflie
+from qrac.dynamics.casadi import NonlinearCrazyflie
+from qrac.dynamics.acados import get_acados_model
 from qrac.control.acados_mpc import AcadosMpc
 import numpy as np
 
 
 def main():
-    model = NonlinearCrazyflie(Ax=0, Ay=0, Az=0)
+    model_cs = NonlinearCrazyflie(Ax=0, Ay=0, Az=0)
+    model = get_acados_model(model_cs)
 
     # initialize controller
     Q = np.diag([10,10,10, 1,1,1, 2.8,2.8,2.8, 1,1,1,])
@@ -14,8 +16,8 @@ def main():
     max_thrust = 0.64   # N
     u_max = max_thrust * np.ones(4)
     u_min = np.zeros(4)
-    control_T = 0.025
-    N = 8
+    control_T = 0.02
+    N = 20
     mpc = AcadosMpc(
         model=model, Q=Q, R=R, u_max=u_max, u_min=u_min, time_step=control_T, num_nodes=N,)
 

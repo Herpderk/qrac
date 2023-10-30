@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
-from qrac.dynamics.acados_model import NonlinearCrazyflie
+from qrac.dynamics.casadi import NonlinearCrazyflie
+from qrac.dynamics.acados import get_acados_model
 from qrac.control.acados_mpc import AcadosMpc
 from qrac.sim.acados_backend import AcadosBackend
 from qrac.sim.minimal_sim import MinimalSim
@@ -9,7 +10,8 @@ import time
 
 
 def main():
-    model = NonlinearCrazyflie(Ax=0, Ay=0, Az=0)
+    model_cs = NonlinearCrazyflie(Ax=0, Ay=0, Az=0)
+    model = get_acados_model(model_cs)
 
     # initialize controller
     Q = np.diag([6,6,6, 1,1,1, 2,2,2, 1,1,1,])
@@ -43,7 +45,7 @@ def main():
     sim.update_setpoint(x_set=x_set)
     
     # You can also end the sim early with 'stop'
-    time.sleep(10)
+    time.sleep(30)
     sim.stop()
 
 
