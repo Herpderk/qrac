@@ -10,6 +10,7 @@ import time
 
 
 def main():
+    # initialize the model
     model_cs = NonlinearCrazyflie(Ax=0, Ay=0, Az=0)
     model = get_acados_model(model_cs)
 
