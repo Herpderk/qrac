@@ -1,7 +1,15 @@
 #!/usr/bin/python3
 
 import casadi as cs
-from acados_template import AcadosModel
+
+
+class CasadiModel():
+    def __init__(self, f_expl_expr, x, xdot, u, name,) -> None:
+        self.f_expl_expr = f_expl_expr
+        self.x = x
+        self.xdot = xdot
+        self.u = u
+        self.name = name
 
 
 def NonlinearQuadrotor(
@@ -17,7 +25,7 @@ def NonlinearQuadrotor(
     Ax: float,
     Ay: float,
     Az: float,
-) -> AcadosModel:
+) -> CasadiModel:
     """
     Returns casadi struct containing explicit dynamics,
     state, state_dot, control input, and name. 
@@ -106,14 +114,8 @@ def NonlinearQuadrotor(
 
     # control affine formulation
     Xdot = f + g @ u
-
-    # store variables in casadi struct
-    model = AcadosModel()
-    model.f_expl_expr = Xdot
-    model.x = X
-    model.xdot = Xdot
-    model.u = u 
-    model.name = "nonlinear_quadrotor"
+    model = CasadiModel(
+        f_expl_expr=Xdot, x=X, xdot=Xdot, u=u, name="nonlinear_quadrotor")
     return model
 
 
@@ -121,7 +123,7 @@ def NonlinearCrazyflie(
     Ax: float,
     Ay: float,
     Az: float,
-) -> AcadosModel:
+) -> CasadiModel:
     """
     crazyflie system identification:
     https://www.research-collection.ethz.ch/handle/20.500.11850/214143
@@ -138,4 +140,5 @@ def NonlinearCrazyflie(
     Ax = 0
     Ay = 0
     Az = 0
-    return NonlinearQuadrotor(m, l1, l2, l3, l4, Ixx, Iyy, Izz, k, Ax, Ay, Az)
+    return NonlinearQuadrotor(
+        m, l1, l2, l3, l4, Ixx, Iyy, Izz, k, Ax, Ay, Az)
