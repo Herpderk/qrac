@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+from acados_template import AcadosModel
 import casadi as cs
 
 
@@ -142,3 +143,13 @@ def NonlinearCrazyflie(
     Az = 0
     return NonlinearQuadrotor(
         m, l1, l2, l3, l4, Ixx, Iyy, Izz, k, Ax, Ay, Az)
+
+
+def get_acados_model(model_cs: CasadiModel) -> AcadosModel:
+    model = AcadosModel()
+    model.f_expl_expr = model_cs.f_expl_expr
+    model.x = model_cs.x
+    model.xdot = model_cs.xdot
+    model.u = model_cs.u
+    model.name = model_cs.name
+    return model
