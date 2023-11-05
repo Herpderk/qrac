@@ -18,8 +18,10 @@ def main():
     u_min = np.zeros(4)
     control_T = 0.02
     N = 20
+    rt = False
     mpc = AcadosMpc(
-        model=model, Q=Q, R=R, u_max=u_max, u_min=u_min, time_step=control_T, num_nodes=N,)
+        model=model, Q=Q, R=R, u_max=u_max, u_min=u_min, \
+        time_step=control_T, num_nodes=N, real_time=rt,)
 
     # run a single control loop with trajectory prediction
     x0 = np.zeros(12)
