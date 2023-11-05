@@ -11,7 +11,7 @@ from typing import Tuple
 class MinimalSim():
     def __init__(
         self,
-        backend,
+        plant,
         controller,
         lb_pose: np.ndarray,
         ub_pose: np.ndarray,
@@ -19,9 +19,9 @@ class MinimalSim():
         sprite_size=1.0,
     ) -> None:
         self._assert(
-            backend, controller, lb_pose, ub_pose, data_len, sprite_size,)
+            plant, controller, lb_pose, ub_pose, data_len, sprite_size,)
         self._fig, self._ax, self._text = self._init_fig()
-        self._backend = backend
+        self._plant = plant
         self._controller = controller
         self._xlim = (lb_pose[0], ub_pose[0])
         self._ylim = (lb_pose[1], ub_pose[1])
@@ -36,8 +36,8 @@ class MinimalSim():
         self._verbose = mp.Value("b", False)
         self._pose_data = np.zeros((data_len, 3))
         self._data_ind = 0
-        self._x = mp.Array("f", np.zeros(backend.nx))
-        self._x_set = mp.Array("f", np.zeros(backend.nx))
+        self._x = mp.Array("f", np.zeros(plant.nx))
+        self._x_set = mp.Array("f", np.zeros(plant.nx))
         self._max_steps = mp.Value("i", -1)
         self._steps = mp.Value("i", 0)
         self._sim_time = mp.Value("f", 0.0)
@@ -58,7 +58,7 @@ class MinimalSim():
             raise RuntimeError(
                 "You cannot start the sim when it is already running. Wait for 'is_alive' to be False to start the sim again.")
         else:
-            assert len(x0) == self._backend.nx
+            assert len(x0) == self._plant.nx
             assert type(max_steps) == int
             assert type(verbose) == bool
             self._reset(x0, max_steps, verbose)
@@ -75,7 +75,7 @@ class MinimalSim():
         self,
         x_set: np.ndarray,
     ) -> None:
-        assert len(x_set) == self._backend.nx
+        assert len(x_set) == self._plant.nx
         try:
             self._x_set[:] = x_set
         except AttributeError:
@@ -102,10 +102,10 @@ class MinimalSim():
 
     def _run_procs(self) -> None:
         frontend_proc = mp.Process(target=self._run_frontend, args=[])
-        backend_proc = mp.Process(target=self._run_backend, args=[])
+        plant_proc = mp.Process(target=self._run_plant, args=[])
         frontend_proc.start()
-        backend_proc.start()
-        backend_proc.join()
+        plant_proc.start()
+        plant_proc.join()
         frontend_proc.join()
         print("\nSimulator successfully closed.")
 
@@ -228,13 +228,13 @@ class MinimalSim():
         plt.pause(0.00001)
 
 
-    def _run_backend(self) -> None:
+    def _run_plant(self) -> None:
         while self._run_flag.value:
             x0 = np.array(self._x[:])
             x_set = np.array(self._x_set[:])
             timer = self._verbose.value
             u = self._controller.get_input(x0=x0, x_set=x_set, timer=timer)
-            x = self._backend.update(x0=x0, u=u, timer=self._verbose.value)
+            x = self._plant.update(x0=x0, u=u, timer=self._verbose.value)
             self._x[:] = x
             if self._verbose.value:
                 print(f"\nu: {u}")
@@ -260,7 +260,7 @@ class MinimalSim():
 
     def _assert(
         self,
-        backend,
+        plant,
         controller,
         lb_pose: np.ndarray,
         ub_pose: np.ndarray,
@@ -268,20 +268,20 @@ class MinimalSim():
         sprite_size: float,
     ) -> None:
         try:
-            backend.update
+            plant.update
         except AttributeError:
             raise NotImplementedError(
-                "Please implement an 'update' method in your backend class!")
+                "Please implement an 'update' method in your plant class!")
         try:
-            backend.nx
+            plant.nx
         except AttributeError:
             raise NotImplementedError(
-                "Please implement an 'nx' variable in your backend class!")
+                "Please implement an 'nx' variable in your plant class!")
         try:
-            backend.nu
+            plant.nu
         except AttributeError:
             raise NotImplementedError(
-                "Please implement an 'nu' variable in your backend class!")
+                "Please implement an 'nu' variable in your plant class!")
         try:
             controller.get_input
         except AttributeError:

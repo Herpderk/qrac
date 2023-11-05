@@ -18,6 +18,7 @@ from typing import List, Tuple
 import atexit
 import shutil
 import os
+from qrac.dynamics import NonlinearQuadrotor, get_acados_model
 
 
 class AcadosMpc:
@@ -27,7 +28,7 @@ class AcadosMpc:
 
     def __init__(
         self,
-        model: AcadosModel,
+        model: NonlinearQuadrotor,
         Q: np.ndarray,
         R: np.ndarray,
         u_max: np.ndarray,
@@ -37,7 +38,7 @@ class AcadosMpc:
         real_time: bool,
     ) -> None:
         """
-        Initialize the MPC with dynamics as casadi namespace,
+        Initialize the MPC with dynamics from casadi variables,
         Q & R cost matrices, maximum and minimum thrusts, time-step,
         and number of shooting nodes (length of prediction horizon)
         """
@@ -129,13 +130,12 @@ class AcadosMpc:
 
     def _get_dims(
         self,
-        model: AcadosModel,
+        model: NonlinearQuadrotor,
     ) -> Tuple[int]:
         """
         Acados model format:
-        f_imp_expr/f_expl_expr, x, xdot, u, name
+        f_imp_expr/f_expl_expr, xdot, x, u
         """
-        assert type(model) == AcadosModel
         nx = model.x.shape[0]
         nu = model.u.shape[0]
         return nx, nu
@@ -156,7 +156,7 @@ class AcadosMpc:
         ny = self._nx + self._nu  # combine x and u into y
 
         ocp = AcadosOcp()
-        ocp.model = model
+        ocp.model = get_acados_model(model)
         ocp.dims.N = self._N
         ocp.dims.nx = self._nx
         ocp.dims.nu = self._nu
@@ -298,7 +298,7 @@ class AcadosMpc:
 
     def _assert(
         self,
-        model: AcadosModel,
+        model: NonlinearQuadrotor,
         Q: np.ndarray,
         R: np.ndarray,
         u_max: np.ndarray,
@@ -307,9 +307,9 @@ class AcadosMpc:
         num_nodes: int,
         real_time: bool,
     ) -> None:
-        if type(model) != AcadosModel:
+        if type(model) != NonlinearQuadrotor:
             raise TypeError(
-                "The inputted model must be of type 'AcadosModel'!")
+                "The inputted model must be of type 'NonlinearQuadrotor'!")
         if type(Q) != np.ndarray:
             raise TypeError(
                 "Please input the cost matrix as a numpy array!")

@@ -1,14 +1,13 @@
 #!/usr/bin/python3
 
-from qrac.dynamics.casadi import NonlinearCrazyflie, get_acados_model
+from qrac.dynamics import NonlinearCrazyflie
 from qrac.control.acados_mpc import AcadosMpc
 import numpy as np
 
 
 def main():
     # get dynamics model and convert to acados
-    model_cs = NonlinearCrazyflie(Ax=0, Ay=0, Az=0)
-    model = get_acados_model(model_cs)
+    model = NonlinearCrazyflie(Ax=0, Ay=0, Az=0)
 
     # initialize controller
     Q = np.diag([10,10,10, 1,1,1, 2.8,2.8,2.8, 1,1,1,])
