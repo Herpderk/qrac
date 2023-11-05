@@ -232,12 +232,13 @@ class MinimalSim():
         while self._run_flag.value:
             x0 = np.array(self._x[:])
             x_set = np.array(self._x_set[:])
-            u = self._controller.get_input(x0=x0, x_set=x_set, timer=self._verbose.value)
+            timer = self._verbose.value
+            u = self._controller.get_input(x0=x0, x_set=x_set, timer=timer)
             x = self._backend.update(x0=x0, u=u, timer=self._verbose.value)
             self._x[:] = x
             if self._verbose.value:
-                print(f"u: {u}")
-                print(f"x: {x}")
+                print(f"\nu: {u}")
+                print(f"x: {x}\n")
             self._check_steps()
 
 
