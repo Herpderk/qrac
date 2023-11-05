@@ -34,6 +34,7 @@ class AcadosMpc:
         u_min: np.ndarray,
         time_step: float,
         num_nodes: int,
+        real_time: bool,
     ) -> None:
         """
         Initialize the MPC with dynamics as casadi namespace,
@@ -41,10 +42,11 @@ class AcadosMpc:
         and number of shooting nodes (length of prediction horizon)
         """
         self._nx, self._nu = self._get_dims(model)
-        self._assert(model, Q, R, u_max, u_min, time_step, num_nodes)
+        self._assert(model, Q, R, u_max, u_min, time_step, num_nodes, real_time)
+        self._u_min = u_min
         self._dt = time_step
         self._N = num_nodes
-        self._u_min = u_min
+        self._rt = real_time
         self._solver = self._init_solver(model, Q, R, u_max, u_min)
 
         # deleting acados compiled files when script is terminated.
@@ -120,6 +122,9 @@ class AcadosMpc:
         self._solver.solve()
         if timer:
             print(f"mpc runtime: {time.perf_counter() - st}")
+        if self._rt:
+            while time.perf_counter() - st < self._dt:
+                pass
 
 
     def _get_dims(
@@ -300,6 +305,7 @@ class AcadosMpc:
         u_min: np.ndarray,
         time_step: float,
         num_nodes: int,
+        real_time: bool,
     ) -> None:
         if type(model) != AcadosModel:
             raise TypeError(
@@ -325,6 +331,9 @@ class AcadosMpc:
         if type(num_nodes) != int:
             raise ValueError(
                 "Please input the number of shooting nodes as an integer!")
+        if type(real_time) != bool:
+            raise ValueError(
+                "Please input the real-time mode as a bool!")
 
 
     def _clear_files(self) -> None:
