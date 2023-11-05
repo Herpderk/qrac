@@ -6,12 +6,13 @@ import time
 import atexit
 import os
 from typing import Tuple
+from qrac.dynamics import NonlinearQuadrotor, get_acados_model
 
 
-class AcadosBackend():
+class AcadosPlant():
     def __init__(
         self,
-        model,
+        model: NonlinearQuadrotor,
         sim_step,
         control_step,
     ) -> None:
@@ -58,7 +59,7 @@ class AcadosBackend():
         if status != 0:
             raise Exception(f"acados returned status {status}.")
         if timer:
-            print(f"sim runtime: {time.perf_counter() - st}")        
+            print(f"plant runtime: {time.perf_counter() - st}")        
 
 
     def _get_dims(
@@ -72,12 +73,12 @@ class AcadosBackend():
 
     def _init_solver(
         self,
-        model: AcadosModel,
+        model: NonlinearQuadrotor,
         sim_step: float,
         control_step: float,
     ) -> AcadosSimSolver:
         sim = AcadosSim()
-        sim.model = model
+        sim.model = get_acados_model(model)
         sim.solver_options.T = control_step
         sim.solver_options.integrator_type = "ERK"
         sim.solver_options.num_stages = 4
@@ -88,11 +89,11 @@ class AcadosBackend():
 
     def _assert(
         self,
-        model: AcadosModel,
+        model: NonlinearQuadrotor,
         sim_step: float,
         control_step: float,
     ) -> None:
-        if type(model) != AcadosModel:
+        if type(model) != NonlinearQuadrotor:
             raise TypeError(
                 "The inputted model must be of type 'AcadosModel'!")
         if (type(sim_step) != int and type(sim_step) != float):
