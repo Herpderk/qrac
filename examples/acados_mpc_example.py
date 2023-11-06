@@ -16,7 +16,7 @@ def main():
     u_max = max_thrust * np.ones(4)
     u_min = np.zeros(4)
     control_T = 0.02
-    N = 20
+    N = 16
     rt = False
     mpc = AcadosMpc(
         model=model, Q=Q, R=R, u_max=u_max, u_min=u_min, \
