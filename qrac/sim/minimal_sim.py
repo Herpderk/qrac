@@ -291,7 +291,7 @@ class MinimalSim():
             controller.dt
         except AttributeError:
             raise NotImplementedError(
-                "Please implement an 'dt' variable in your controller class!")
+                "Please implement a 'dt' variable in your controller class!")
 
         if len(lb_pose) != 3:
             raise ValueError(
