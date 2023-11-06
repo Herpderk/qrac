@@ -56,7 +56,7 @@ def main():
         cutoff_freq=w, time_step=l1_T, real_time=rt)
 
     # initialize simulator plant
-    sim_T = l1_T/100
+    sim_T = mpc_T/100
     plant = AcadosPlant(
         model=model_acc, sim_step=sim_T, control_step=l1_T)
 
