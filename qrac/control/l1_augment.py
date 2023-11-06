@@ -18,29 +18,31 @@ class L1Augmentation():
         time_step: float,
         real_time: bool,
     ) -> None:
-        assert control_ref.dt >= time_step
-        self._assert()
-        self._nx, self._nu = self._get_dims(model)
+        self._z_ind = 6
+        self._nz = 6
+        self._nm = 4
+        self._num = 2
+        self._assert(model, control_ref, adapt_gain, cutoff_freq, time_step, real_time)
+
+        self._u_l1 = np.zeros(model.nu)
+        self._z = np.zeros(self._nz)
+        self._dstb_m = np.zeros(self._nm)
+        self._dstb_um = np.zeros(self._num)
+        self._f, self._g_m, self._g_um = self._get_l1_dynamics(model)
+        self._As = adapt_gain
+        self._adapt_exp, self._adapt_mat, self._filter_exp = \
+            self._get_l1_const(adapt_gain, cutoff_freq, time_step)
+
         self._ctrl_ref = control_ref
         self._dt = time_step
         self._rt = real_time
         self._loop_ratio = int(round(control_ref.dt / time_step))
         self._loop_ct = int(round(control_ref.dt / time_step))
 
-        self._x = mp.Array("f", np.zeros(self._nx))
-        self._x_set = mp.Array("f", np.zeros(self._nx))
-        self._u_ref = mp.Array("f", np.zeros(self._nu))
+        self._x = mp.Array("f", np.zeros(model.nx))
+        self._x_set = mp.Array("f", np.zeros(model.nx))
+        self._u_ref = mp.Array("f", np.zeros(model.nu))
         self._timer = mp.Value("b", False)
-
-        self._u_l1 = np.zeros(self._nu)
-        self._dstb_m = np.zeros(4)
-        self._dstb_um = np.zeros(2)
-        self._z = np.zeros(6)
-        self._f, self._g_m, self._g_um = self._get_l1_dynamics(model)
-        self._As = adapt_gain
-        self._adapt_exp, self._adapt_mat, self._filter_exp = \
-            self._get_l1_const(adapt_gain, cutoff_freq, time_step)
-
         if real_time:
             self._run_flag = mp.Value("b", False)
 
@@ -109,8 +111,8 @@ class L1Augmentation():
         x = np.array(self._x[:])
         u_ref = np.array(self._u_ref[:])
         z = np.array(self._z[:])
-        z_err = np.array(z - x[6:12])
-        f = np.array(self._f(x, u_ref)).reshape(6)
+        z_err = np.array(z - x[self._z_ind : self._z_ind+self._nz])
+        f = np.array(self._f(x, u_ref)).reshape(self._nz)
         g_m = np.array(self._g_m(x))
         g_um = np.array(self._g_um(x))
         u_l1 = self._u_l1
@@ -124,16 +126,16 @@ class L1Augmentation():
     def _run_adapt_law(self) -> None:
         x = np.array(self._x[:])
         z = np.array(self._z[:])
-        z_err = np.array(z - x[6:12])
+        z_err = np.array(z - x[self._z_ind : self._z_ind+self._nz])
         g_m = np.array(self._g_m(x))
         g_um = np.array(self._g_um(x))
 
-        I = np.eye(6)
+        I = np.eye(self._nz)
         G = np.block([g_m, g_um])
         mu = self._adapt_exp @ z_err
         adapt = -I @ np.linalg.inv(G) @ self._adapt_mat @ mu
-        self._dstb_m = adapt[0:4]
-        self._dstb_um = adapt[4:6]
+        self._dstb_m = adapt[: self._nm]
+        self._dstb_um = adapt[self._nm : self._nm + self._num]
 
 
     def _run_ctrl_law(self) -> None:
@@ -148,8 +150,7 @@ class L1Augmentation():
         time_step: float
     ) -> Tuple[np.ndarray]:
         adapt_exp = np.exp(adapt_gain*time_step)
-        adapt_mat = np.linalg.inv(adapt_gain) @ \
-            (adapt_exp - np.eye(adapt_gain.shape[0]))
+        adapt_mat = np.linalg.inv(adapt_gain) @ (adapt_exp - np.eye(self._nz))
         filter_exp = np.exp(-cutoff_freq*time_step)
         return adapt_exp, adapt_mat, filter_exp
 
@@ -179,7 +180,6 @@ class L1Augmentation():
             cs.horzcat(          0,               0,    1),
         ))
         R = Rz @ Ry @ Rx
-        rx, ry, rz = cs.horzsplit(R)
 
         J = cs.SX(np.diag([model.Ixx, model.Iyy, model.Izz]))
         P = cs.SX(cs.vertcat(
@@ -197,11 +197,6 @@ class L1Augmentation():
             R/model.m @ cs.vertcat(cs.SX.eye(2), cs.SX.zeros(1,2)),
             cs.SX.zeros(3,2)
         ))
-        '''
-        g_um_sym = cs.SX(cs.vertcat(
-            (1/model.m) * cs.horzcat(rx, ry),
-            cs.SX.zeros(3, 2)
-        ))'''
 
         f = cs.Function("f", [model.x, model.u], [f_sym])
         g_m = cs.Function("g_m", [model.x], [g_m_sym])
@@ -209,14 +204,44 @@ class L1Augmentation():
         return f, g_m, g_um
 
 
-    def _get_dims(
+    def _assert(
         self,
         model: NonlinearQuadrotor,
-    ) -> Tuple[int]:
-        nx = model.x.shape[0]
-        nu = model.u.shape[0]
-        return nx, nu
+        control_ref,
+        adapt_gain: np.ndarray,
+        cutoff_freq: float,
+        time_step: float,
+        real_time: bool,
+    ) -> None:
+        if type(model) != NonlinearQuadrotor:
+            raise TypeError(
+                "The inputted model must be of type 'NonlinearQuadrotor'!")
+        try:
+            control_ref.get_input
+        except AttributeError:
+            raise NotImplementedError(
+                "Please implement a 'get_input' method in your reference controller class!")
+        try:
+            control_ref.dt
+        except AttributeError:
+            raise NotImplementedError(
+                "Please implement a 'dt' variable in your controller class!")
 
-
-    def _assert(self) -> None:
-        pass
+        if type(adapt_gain) != np.ndarray:
+            raise TypeError(
+                "Please input the adaptation gain as a Hurwitz numpy array!")
+        if adapt_gain.shape != (self._nz, self._nz):
+            raise ValueError(
+                f"Please input the adaptation gain as a {self._nz}-by-{self.nz} array!")
+        if type(cutoff_freq) != int and type(cutoff_freq) != float:
+            raise TypeError(
+                "Please input the cutoff frequency as an integer or float!")
+        if type(time_step) != int and type(time_step) != float:
+            raise ValueError(
+                "Please input the control loop step as an integer or float!")
+        if type(real_time) != bool:
+            raise ValueError(
+                "Please input the real-time mode as a bool!")
+        if control_ref.dt < time_step:
+            raise ValueError(
+                "Please make sure the reference controller time step is greater than or equal to the L1 time step!")
