@@ -14,11 +14,11 @@ from scipy.interpolate import make_interp_spline
 import matplotlib.pyplot as plt
 import matplotlib
 import time
-from typing import List, Tuple
+from typing import List
 import atexit
 import shutil
 import os
-from qrac.dynamics import NonlinearQuadrotor, get_acados_model
+from qrac.dynamics import NonlinearQuadrotor
 
 
 class AcadosMpc:
@@ -42,7 +42,8 @@ class AcadosMpc:
         Q & R cost matrices, maximum and minimum thrusts, time-step,
         and number of shooting nodes (length of prediction horizon)
         """
-        self._nx, self._nu = self._get_dims(model)
+        self._nx = model.nx
+        self._nu = model.nu
         self._assert(model, Q, R, u_max, u_min, time_step, num_nodes, real_time)
         self._u_min = u_min
         self._dt = time_step
@@ -128,19 +129,6 @@ class AcadosMpc:
                 pass
 
 
-    def _get_dims(
-        self,
-        model: NonlinearQuadrotor,
-    ) -> Tuple[int]:
-        """
-        Acados model format:
-        f_imp_expr/f_expl_expr, xdot, x, u
-        """
-        nx = model.x.shape[0]
-        nu = model.u.shape[0]
-        return nx, nu
-
-
     def _init_solver(
         self,
         model: AcadosModel,
@@ -156,7 +144,7 @@ class AcadosMpc:
         ny = self._nx + self._nu  # combine x and u into y
 
         ocp = AcadosOcp()
-        ocp.model = get_acados_model(model)
+        ocp.model = model.get_acados_model()
         ocp.dims.N = self._N
         ocp.dims.nx = self._nx
         ocp.dims.nu = self._nu
@@ -318,13 +306,13 @@ class AcadosMpc:
                 "Please input the cost matrix as a numpy array!")
         if Q.shape != (self._nx, self._nx):
             raise ValueError(
-                "Please input the state cost matrix with appropriate dimensions!")
+                f"Please input the state cost matrix as a {self._nx}-by-{self.nx} array!")
         if R.shape != (self._nu, self._nu):
             raise ValueError(
-                "Please input the control cost matrix with appropriate dimensions!")
+                f"Please input the control cost matrix as a {self._nu}-by-{self.nu} array!")
         if len(u_max) != self._nu or len(u_min) != self._nu:
             raise ValueError(
-                "Please input the maximum control input with appropriate dimensions!")
+                f"Please input the minimum or maximum control input as vector of length {self._nu}!")
         if type(time_step) != int and type(time_step) != float:
             raise ValueError(
                 "Please input the control loop step as an integer or float!")

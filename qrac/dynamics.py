@@ -39,6 +39,18 @@ class NonlinearQuadrotor():
         self.k = k
         self.name = name
         self.f_expl_expr, self.xdot, self.x, self.u = self._get_dynamics()
+        self.nx = self.x.shape[0]
+        self.nu = self.u.shape[0]
+
+
+    def get_acados_model(self):
+        model_ac = AcadosModel()
+        model_ac.f_expl_expr = self.f_expl_expr
+        model_ac.x = self.x
+        model_ac.xdot = self.xdot
+        model_ac.u = self.u
+        model_ac.name = self.name
+        return model_ac
 
 
     def _get_dynamics(self) -> Tuple:
@@ -160,13 +172,3 @@ def NonlinearCrazyflie(
     crazyflie = NonlinearQuadrotor(
         m, Ixx, Iyy, Izz, Ax, Ay, Az, bx, by, k)
     return crazyflie
-
-
-def get_acados_model(model: NonlinearQuadrotor):
-    model_ac = AcadosModel()
-    model_ac.f_expl_expr = model.f_expl_expr
-    model_ac.x = model.x
-    model_ac.xdot = model.xdot
-    model_ac.u = model.u
-    model_ac.name = model.name
-    return model_ac

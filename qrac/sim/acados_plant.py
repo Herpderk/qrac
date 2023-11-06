@@ -1,12 +1,11 @@
 #!/usr/bin/python3
 
-from acados_template import AcadosSim, AcadosSimSolver, AcadosModel
+from acados_template import AcadosSim, AcadosSimSolver
 import numpy as np
 import time
 import atexit
 import os
-from typing import Tuple
-from qrac.dynamics import NonlinearQuadrotor, get_acados_model
+from qrac.dynamics import NonlinearQuadrotor
 
 
 class AcadosPlant():
@@ -17,7 +16,8 @@ class AcadosPlant():
         control_step,
     ) -> None:
         self._assert(model, sim_step, control_step)
-        self._nx, self._nu = self._get_dims(model)
+        self._nx = model.nx
+        self._nu = model.nu
         self._solver = self._init_solver(model, sim_step, control_step)
         atexit.register(self._clear_files)
 
@@ -59,16 +59,7 @@ class AcadosPlant():
         if status != 0:
             raise Exception(f"acados returned status {status}.")
         if timer:
-            print(f"plant runtime: {time.perf_counter() - st}")        
-
-
-    def _get_dims(
-        self,
-        model: AcadosModel
-    ) -> Tuple[int]:
-        nx = model.x.shape[0]
-        nu = model.u.shape[0]
-        return nx, nu
+            print(f"plant runtime: {time.perf_counter() - st}")
 
 
     def _init_solver(
@@ -78,7 +69,7 @@ class AcadosPlant():
         control_step: float,
     ) -> AcadosSimSolver:
         sim = AcadosSim()
-        sim.model = get_acados_model(model)
+        sim.model = model.get_acados_model()
         sim.solver_options.T = control_step
         sim.solver_options.integrator_type = "ERK"
         sim.solver_options.num_stages = 4
