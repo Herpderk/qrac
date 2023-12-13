@@ -5,13 +5,13 @@ import numpy as np
 import time
 import atexit
 import os
-from qrac.dynamics import NonlinearQuadrotor
+from qrac.dynamics import Quadrotor
 
 
 class AcadosPlant():
     def __init__(
         self,
-        model: NonlinearQuadrotor,
+        model: Quadrotor,
         sim_step,
         control_step,
     ) -> None:
@@ -64,7 +64,7 @@ class AcadosPlant():
 
     def _init_solver(
         self,
-        model: NonlinearQuadrotor,
+        model: Quadrotor,
         sim_step: float,
         control_step: float,
     ) -> AcadosSimSolver:
@@ -80,11 +80,11 @@ class AcadosPlant():
 
     def _assert(
         self,
-        model: NonlinearQuadrotor,
+        model: Quadrotor,
         sim_step: float,
         control_step: float,
     ) -> None:
-        if type(model) != NonlinearQuadrotor:
+        if type(model) != Quadrotor:
             raise TypeError(
                 "The inputted model must be of type 'AcadosModel'!")
         if (type(sim_step) != int and type(sim_step) != float):
