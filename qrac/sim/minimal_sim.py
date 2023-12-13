@@ -4,8 +4,8 @@ import multiprocessing as mp
 import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
-import time
 from typing import Tuple
+import time
 
 
 class MinimalSim():
@@ -37,7 +37,7 @@ class MinimalSim():
         self._pose_data = np.zeros((data_len, 3))
         self._data_ind = 0
         self._x = mp.Array("f", np.zeros(plant.nx))
-        self._x_set = mp.Array("f", np.zeros(plant.nx))
+        self._x_set = mp.Array("f", np.zeros(controller.n_set))
         self._max_steps = mp.Value("i", -1)
         self._steps = mp.Value("i", 0)
         self._sim_time = mp.Value("f", 0.0)
@@ -46,6 +46,16 @@ class MinimalSim():
     @property
     def is_alive(self) -> bool:
         return self._run_flag.value
+
+
+    @property
+    def state(self) -> np.ndarray:
+        return np.array(self._x[:])
+
+
+    @property
+    def timestamp(self) -> float:
+        return self._sim_time.value
 
 
     def start(
@@ -75,7 +85,7 @@ class MinimalSim():
         self,
         x_set: np.ndarray,
     ) -> None:
-        assert len(x_set) == self._plant.nx
+        assert x_set.shape[0] == self._controller.n_set
         try:
             self._x_set[:] = x_set
         except AttributeError:
@@ -94,7 +104,7 @@ class MinimalSim():
         self._pose_data = np.zeros((self._data_len, 3))
         self._data_ind = 0
         self._x[:] = x0
-        self._x_set[:] = x0
+        self._x_set[:] = np.tile(x0, int(self._controller.n_set/x0.shape[0]))
         self._max_steps.value = max_steps
         self._steps.value = 0
         self._sim_time.value = 0.0
@@ -232,10 +242,13 @@ class MinimalSim():
         while self._run_flag.value:
             x0 = np.array(self._x[:])
             x_set = np.array(self._x_set[:])
+
             timer = self._verbose.value
+            print(timer)
             u = self._controller.get_input(x0=x0, x_set=x_set, timer=timer)
             x = self._plant.update(x0=x0, u=u, timer=self._verbose.value)
             self._x[:] = x
+
             if self._verbose.value:
                 print(f"\nu: {u}")
                 print(f"x: {x}\n")
@@ -253,7 +266,7 @@ class MinimalSim():
         fig = plt.figure(figsize=(9,10))
         fig.canvas.mpl_connect("key_release_event",
             lambda event: [exit(0) if event.key == "escape" else None])
-        ax = fig.gca(projection="3d")
+        ax = fig.add_subplot(projection="3d")
         text = plt.gcf().text(0.6, 0.85, "0.00", fontsize=14)
         return fig, ax, text
 
@@ -291,7 +304,13 @@ class MinimalSim():
             controller.dt
         except AttributeError:
             raise NotImplementedError(
-                "Please implement a 'dt' variable in your controller class!")
+                "Please implement a 'dt' attribute in your controller class!")
+        try:
+            controller.n_set
+        except AttributeError:
+            raise NotImplementedError(
+                "Please implement a 'n_set' attribute in your controller class!")
+
 
         if len(lb_pose) != 3:
             raise ValueError(

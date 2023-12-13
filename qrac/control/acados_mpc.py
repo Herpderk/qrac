@@ -14,11 +14,11 @@ from scipy.interpolate import make_interp_spline
 import matplotlib.pyplot as plt
 import matplotlib
 import time
-from typing import List
+from typing import List, Tuple
 import atexit
 import shutil
 import os
-from qrac.dynamics import NonlinearQuadrotor
+from qrac.dynamics import Quadrotor
 
 
 class AcadosMpc:
@@ -28,7 +28,7 @@ class AcadosMpc:
 
     def __init__(
         self,
-        model: NonlinearQuadrotor,
+        model: Quadrotor,
         Q: np.ndarray,
         R: np.ndarray,
         u_max: np.ndarray,
@@ -50,7 +50,6 @@ class AcadosMpc:
         self._N = num_nodes
         self._rt = real_time
         self._solver = self._init_solver(model, Q, R, u_max, u_min)
-
         # deleting acados compiled files when script is terminated.
         atexit.register(self._clear_files)
 
@@ -60,6 +59,14 @@ class AcadosMpc:
         return self._dt
 
 
+
+
+
+    @property
+    def n_set(self) -> int:
+        return self._N * self._nx
+
+
     def get_input(
         self,
         x0: np.ndarray,
@@ -67,7 +74,7 @@ class AcadosMpc:
         timer=False,
     ) -> np.ndarray:
         """
-        Get the first control action from the optimization.
+        Get the first control input from the optimization.
         """
         self._solve(x0, x_set, timer)
         nxt_ctrl = self._solver.get(0, "u")
@@ -108,16 +115,18 @@ class AcadosMpc:
         then solve the optimization once.
         """
         st = time.perf_counter()
-        assert len(x0) == self._nx
-        assert len(x_set) == self._nx
+        assert x0.shape[0] == self._nx
+        assert x_set.shape[0] == self.n_set
 
         # bound x0 to initial state
         self._solver.set(0, "lbx", x0)
         self._solver.set(0, "ubx", x0)
 
         # the reference input will be the hover input
-        y_ref = np.concatenate((x_set, self._u_min))
+        #x_set = x_set.reshape(self.n_set)
         for k in range(self._N):
+            y_ref = np.concatenate(
+                (x_set[k*self._nx : k*self._nx + self._nx], self._u_min))
             self._solver.set(k, "yref", y_ref)
 
         # solve for the next ctrl input
@@ -182,17 +191,17 @@ class AcadosMpc:
         ocp.constraints.lbu = u_min
         ocp.constraints.ubu = u_max
         ocp.constraints.idxbu = np.arange(self._nu)
-        '''
-        # state constraints: z, roll, pitch, yaw
+
+        # state constraints: roll, pitch, yaw
         ocp.constraints.lbx = np.array(
-            [-10, -10, 0,]
+            [-np.pi/2, -np.pi/2, 0,]
         )
         ocp.constraints.ubx = np.array(
-            [10, 10, 10,]
+            [np.pi/2, np.pi/2, 2*np.pi,]
         )
         ocp.constraints.idxbx = np.array(
-            [0, 1, 2,]
-        )'''
+            [3, 4, 5,]
+        )
 
         # not sure what this is, but this paper say partial condensing HPIPM
         # is fastest: https://cdn.syscop.de/publications/Frison2020a.pdf
@@ -286,7 +295,7 @@ class AcadosMpc:
 
     def _assert(
         self,
-        model: NonlinearQuadrotor,
+        model: Quadrotor,
         Q: np.ndarray,
         R: np.ndarray,
         u_max: np.ndarray,
@@ -295,9 +304,9 @@ class AcadosMpc:
         num_nodes: int,
         real_time: bool,
     ) -> None:
-        if type(model) != NonlinearQuadrotor:
+        if type(model) != Quadrotor:
             raise TypeError(
-                "The inputted model must be of type 'NonlinearQuadrotor'!")
+                "The inputted model must be of type 'Quadrotor'!")
         if type(Q) != np.ndarray:
             raise TypeError(
                 "Please input the cost matrix as a numpy array!")
@@ -306,7 +315,7 @@ class AcadosMpc:
                 "Please input the cost matrix as a numpy array!")
         if Q.shape != (self._nx, self._nx):
             raise ValueError(
-                f"Please input the state cost matrix as a {self._nx}-by-{self.nx} array!")
+                f"Please input the state cost matrix as a {self._nx}-by-{self._nx} array!")
         if R.shape != (self._nu, self._nu):
             raise ValueError(
                 f"Please input the control cost matrix as a {self._nu}-by-{self.nu} array!")
