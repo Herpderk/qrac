@@ -6,7 +6,7 @@ from typing import Tuple
 from acados_template import AcadosModel
 
 
-class NonlinearQuadrotor():
+class Quadrotor():
     def __init__(
         self,
         m: float,
@@ -72,12 +72,19 @@ class NonlinearQuadrotor():
             x_d, y_d, z_d, phi_d_B, theta_d_B, psi_d_B
         ))
 
+        # transformation from inertial to body frame ang vel
+        W = cs.SX(cs.vertcat(
+            cs.horzcat(1, 0, -cs.sin(theta)),
+            cs.horzcat(0, cs.cos(phi), cs.cos(theta)*cs.sin(phi)),
+            cs.horzcat(0, -cs.sin(phi), cs.cos(theta)*cs.cos(phi)),
+        ))
+
         # rotation matrix from body frame to inertial frame
         Rx = cs.SX(cs.vertcat(
             cs.horzcat(1,            0,            0),
             cs.horzcat(0,  cs.cos(phi), -cs.sin(phi)),
             cs.horzcat(0,  cs.sin(phi),  cs.cos(phi)),
-    ))
+        ))
         Ry = cs.SX(cs.vertcat(
             cs.horzcat( cs.cos(theta),  0,  cs.sin(theta)),
             cs.horzcat(             0,  1,              0),
@@ -104,7 +111,7 @@ class NonlinearQuadrotor():
 
         f = cs.SX(cs.vertcat(
             v,
-            w_B,
+            cs.inv(W) @ w_B,
             gravity - A @ v,
             cs.inv(J) @ (cs.cross(-w_B, J @ w_B)),
         ))
@@ -153,11 +160,11 @@ class NonlinearQuadrotor():
             raise TypeError("The name should be a string!")
 
 
-def NonlinearCrazyflie(
+def Crazyflie(
     Ax: float,
     Ay: float,
     Az: float,
-) -> NonlinearQuadrotor:
+) -> Quadrotor:
     """
     crazyflie system identification:
     https://www.research-collection.ethz.ch/handle/20.500.11850/214143
@@ -166,9 +173,11 @@ def NonlinearCrazyflie(
     Ixx = 3.144988 * 10**(-5)
     Iyy = 3.151127 * 10**(-5)
     Izz = 7.058874 * 10**(-5)
-    bx = np.array([0.04, 0, -0.04, 0])
-    by = np.array([0, -0.04, 0, 0.04])
+    bx = np.array(
+        [0.0283, 0.0283, -0.0283, -0.0283])
+    by = np.array(
+        [0.0283, -0.0283, -0.0283, 0.0283])
     k = 0.005964552 * np.ones(4)
-    crazyflie = NonlinearQuadrotor(
+    crazyflie = Quadrotor(
         m, Ixx, Iyy, Izz, Ax, Ay, Az, bx, by, k)
     return crazyflie
