@@ -244,7 +244,6 @@ class MinimalSim():
             x_set = np.array(self._x_set[:])
 
             timer = self._verbose.value
-            print(timer)
             u = self._controller.get_input(x0=x0, x_set=x_set, timer=timer)
             x = self._plant.update(x0=x0, u=u, timer=self._verbose.value)
             self._x[:] = x
@@ -263,7 +262,7 @@ class MinimalSim():
 
 
     def _init_fig(self) -> Tuple[matplotlib.figure.Figure, plt.Axes, matplotlib.text.Text]:
-        fig = plt.figure(figsize=(9,10))
+        fig = plt.figure(figsize=(8,8))
         fig.canvas.mpl_connect("key_release_event",
             lambda event: [exit(0) if event.key == "escape" else None])
         ax = fig.add_subplot(projection="3d")
