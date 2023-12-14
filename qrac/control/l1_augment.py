@@ -5,13 +5,13 @@ import numpy as np
 import multiprocessing as mp
 from typing import Tuple
 import time
-from qrac.dynamics import NonlinearQuadrotor
+from qrac.dynamics import Quadrotor
 
 
 class L1Augmentation():
     def __init__(
         self,
-        model: NonlinearQuadrotor,
+        model: Quadrotor,
         control_ref,
         adapt_gain: np.ndarray,
         cutoff_freq: float,
@@ -33,6 +33,7 @@ class L1Augmentation():
         self._adapt_exp, self._adapt_mat, self._filter_exp = \
             self._get_l1_const(adapt_gain, cutoff_freq, time_step)
 
+        self._model = model
         self._ctrl_ref = control_ref
         self._dt = time_step
         self._rt = real_time
@@ -40,7 +41,7 @@ class L1Augmentation():
         self._loop_ct = int(round(control_ref.dt / time_step))
 
         self._x = mp.Array("f", np.zeros(model.nx))
-        self._x_set = mp.Array("f", np.zeros(model.nx))
+        self._x_set = mp.Array("f", np.zeros(control_ref.n_set))
         self._u_ref = mp.Array("f", np.zeros(model.nu))
         self._timer = mp.Value("b", False)
         if real_time:
@@ -50,6 +51,11 @@ class L1Augmentation():
     @property
     def dt(self) -> float:
         return self._dt
+    
+    
+    @property
+    def n_set(self) -> Tuple[int]:
+        return self._ctrl_ref.n_set
 
 
     def get_input(
@@ -58,6 +64,8 @@ class L1Augmentation():
         x_set: np.ndarray,
         timer=False,
     ) -> np.ndarray:
+        assert x0.shape[0] == self._model.nx
+        assert x_set.shape[0] == self._ctrl_ref.n_set
         self._timer.value = timer
         self._x[:] = x0
         self._x_set[:] = x_set
@@ -92,7 +100,7 @@ class L1Augmentation():
         x0 = np.array(self._x[:])
         x_set = np.array(self._x_set[:])
         timer = self._timer.value
-        self._u_ref = self._ctrl_ref.get_input(x0=x0, x_set=x_set, timer=timer)
+        self._u_ref[:] = self._ctrl_ref.get_input(x0=x0, x_set=x_set, timer=timer)
 
 
     def _run_l1(self) -> None:
@@ -157,7 +165,7 @@ class L1Augmentation():
 
     def _get_l1_dynamics(
         self,
-        model: NonlinearQuadrotor,
+        model: Quadrotor,
     ) -> Tuple[cs.Function]:
         phi = model.x[3]
         theta = model.x[4]
@@ -206,14 +214,14 @@ class L1Augmentation():
 
     def _assert(
         self,
-        model: NonlinearQuadrotor,
+        model: Quadrotor,
         control_ref,
         adapt_gain: np.ndarray,
         cutoff_freq: float,
         time_step: float,
         real_time: bool,
     ) -> None:
-        if type(model) != NonlinearQuadrotor:
+        if type(model) != Quadrotor:
             raise TypeError(
                 "The inputted model must be of type 'NonlinearQuadrotor'!")
         try:
@@ -225,14 +233,19 @@ class L1Augmentation():
             control_ref.dt
         except AttributeError:
             raise NotImplementedError(
-                "Please implement a 'dt' variable in your controller class!")
+                "Please implement a 'dt' attribute in your controller class!")
+        try:
+            control_ref.n_set
+        except AttributeError:
+            raise NotImplementedError(
+                "Please implement a 'n_set' attribute in your controller class!")
 
         if type(adapt_gain) != np.ndarray:
             raise TypeError(
                 "Please input the adaptation gain as a Hurwitz numpy array!")
         if adapt_gain.shape != (self._nz, self._nz):
             raise ValueError(
-                f"Please input the adaptation gain as a {self._nz}-by-{self.nz} array!")
+                f"Please input the adaptation gain as a {self._nz}-by-{self._nz} array!")
         if type(cutoff_freq) != int and type(cutoff_freq) != float:
             raise TypeError(
                 "Please input the cutoff frequency as an integer or float!")
