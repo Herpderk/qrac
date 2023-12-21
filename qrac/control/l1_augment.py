@@ -15,7 +15,7 @@ class L1Augmentation():
         model: Quadrotor,
         control_ref,
         adapt_gain: float,
-        cutoff_freq: float,
+        bandwidth: float,
         time_step: float,
         real_time: bool,
     ) -> None:
@@ -23,7 +23,7 @@ class L1Augmentation():
         self._nz = 6
         self._nm = 4
         self._num = 2
-        self._assert(model, control_ref, adapt_gain, cutoff_freq, time_step, real_time)
+        self._assert(model, control_ref, adapt_gain, bandwidth, time_step, real_time)
 
         self._u_l1 = np.zeros(model.nu)
         self._z = np.zeros(self._nz)
@@ -33,7 +33,7 @@ class L1Augmentation():
         self._Am = -np.eye(self._nz)
         self._adapt_gain = adapt_gain
         self._adapt_exp, self._adapt_mat, self._filter_exp = \
-            self._get_l1_const(cutoff_freq, time_step)
+            self._get_l1_const(bandwidth, time_step)
 
         self._model = model
         self._ctrl_ref = control_ref
@@ -155,12 +155,12 @@ class L1Augmentation():
 
     def _get_l1_const(
         self,
-        cutoff_freq: float,
+        bandwidth: float,
         time_step: float
     ) -> Tuple[np.ndarray]:
         adapt_exp = expm(self._Am*time_step)
         adapt_mat = np.linalg.inv(self._Am) @ (adapt_exp - np.eye(self._nz))
-        filter_exp = np.exp(-cutoff_freq*time_step)
+        filter_exp = np.exp(-bandwidth*time_step)
         return adapt_exp, adapt_mat, filter_exp
 
 
@@ -218,7 +218,7 @@ class L1Augmentation():
         model: Quadrotor,
         control_ref,
         adapt_gain: float,
-        cutoff_freq: float,
+        bandwidth: float,
         time_step: float,
         real_time: bool,
     ) -> None:
@@ -244,7 +244,7 @@ class L1Augmentation():
         if type(adapt_gain) != int and type(adapt_gain) != float:
             raise TypeError(
                 "Please input the adaptation gain as an integer or float!")
-        if type(cutoff_freq) != int and type(cutoff_freq) != float:
+        if type(bandwidth) != int and type(bandwidth) != float:
             raise TypeError(
                 "Please input the cutoff frequency as an integer or float!")
         if type(time_step) != int and type(time_step) != float:

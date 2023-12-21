@@ -42,12 +42,12 @@ def main():
         time_step=mpc_T, num_nodes=num_nodes, real_time=rt)
 
     # initialize L1 augmentation
-    a_gain = 250
-    w = 40
+    a_gain = 600
+    w = 60
     l1_T = mpc_T
     l1_mpc = L1Augmentation(
         model=model_inacc, control_ref=mpc, adapt_gain=a_gain,
-        cutoff_freq=w, time_step=l1_T, real_time=rt)
+        bandwidth=w, time_step=l1_T, real_time=rt)
 
     # initialize simulator plant
     sim_T = l1_T/100
