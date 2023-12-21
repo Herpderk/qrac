@@ -3,6 +3,7 @@
 import casadi as cs
 import numpy as np
 import multiprocessing as mp
+from scipy.linalg import expm
 from typing import Tuple
 import time
 from qrac.dynamics import Quadrotor
@@ -13,7 +14,7 @@ class L1Augmentation():
         self,
         model: Quadrotor,
         control_ref,
-        adapt_gain: np.ndarray,
+        adapt_gain: float,
         cutoff_freq: float,
         time_step: float,
         real_time: bool,
@@ -29,9 +30,10 @@ class L1Augmentation():
         self._dstb_m = np.zeros(self._nm)
         self._dstb_um = np.zeros(self._num)
         self._f, self._g_m, self._g_um = self._get_l1_dynamics(model)
-        self._As = adapt_gain
+        self._Am = -np.eye(self._nz)
+        self._adapt_gain = adapt_gain
         self._adapt_exp, self._adapt_mat, self._filter_exp = \
-            self._get_l1_const(adapt_gain, cutoff_freq, time_step)
+            self._get_l1_const(cutoff_freq, time_step)
 
         self._model = model
         self._ctrl_ref = control_ref
@@ -105,9 +107,9 @@ class L1Augmentation():
 
     def _run_l1(self) -> None:
         st = time.perf_counter()
-        self._run_predictor()
-        self._run_adapt_law()
-        self._run_ctrl_law()
+        self._predictor()
+        self._adaptation()
+        self._control_law()
         if self._timer.value:
             print(f"L1 runtime: {time.perf_counter() - st}")
         if self._rt:
@@ -115,7 +117,7 @@ class L1Augmentation():
                 pass
 
 
-    def _run_predictor(self) -> None:
+    def _predictor(self) -> None:
         x = np.array(self._x[:])
         u_ref = np.array(self._u_ref[:])
         z = np.array(self._z[:])
@@ -127,11 +129,11 @@ class L1Augmentation():
         dstb_m = self._dstb_m
         dstb_um = self._dstb_um
         z += + self._dt * \
-            (f + g_m@(u_l1+dstb_m) + g_um@dstb_um + self._As@z_err)
+            (f + g_m@(u_l1+dstb_m) + g_um@dstb_um + self._Am@z_err)
         self._z[:] = z
 
 
-    def _run_adapt_law(self) -> None:
+    def _adaptation(self) -> None:
         x = np.array(self._x[:])
         z = np.array(self._z[:])
         z_err = np.array(z - x[self._z_ind : self._z_ind+self._nz])
@@ -141,24 +143,23 @@ class L1Augmentation():
         I = np.eye(self._nz)
         G = np.block([g_m, g_um])
         mu = self._adapt_exp @ z_err
-        adapt = -I @ np.linalg.inv(G) @ self._adapt_mat @ mu
+        adapt = self._adapt_gain * -I @ np.linalg.inv(G) @ self._adapt_mat @ mu
         self._dstb_m = adapt[: self._nm]
         self._dstb_um = adapt[self._nm : self._nm + self._num]
 
 
-    def _run_ctrl_law(self) -> None:
+    def _control_law(self) -> None:
         self._u_l1 = self._filter_exp*self._u_l1 - \
             (1-self._filter_exp)*self._dstb_m
 
 
     def _get_l1_const(
         self,
-        adapt_gain: np.ndarray,
         cutoff_freq: float,
         time_step: float
     ) -> Tuple[np.ndarray]:
-        adapt_exp = np.exp(adapt_gain*time_step)
-        adapt_mat = np.linalg.inv(adapt_gain) @ (adapt_exp - np.eye(self._nz))
+        adapt_exp = expm(self._Am*time_step)
+        adapt_mat = np.linalg.inv(self._Am) @ (adapt_exp - np.eye(self._nz))
         filter_exp = np.exp(-cutoff_freq*time_step)
         return adapt_exp, adapt_mat, filter_exp
 
@@ -216,7 +217,7 @@ class L1Augmentation():
         self,
         model: Quadrotor,
         control_ref,
-        adapt_gain: np.ndarray,
+        adapt_gain: float,
         cutoff_freq: float,
         time_step: float,
         real_time: bool,
@@ -240,12 +241,9 @@ class L1Augmentation():
             raise NotImplementedError(
                 "Please implement a 'n_set' attribute in your controller class!")
 
-        if type(adapt_gain) != np.ndarray:
+        if type(adapt_gain) != int and type(adapt_gain) != float:
             raise TypeError(
-                "Please input the adaptation gain as a Hurwitz numpy array!")
-        if adapt_gain.shape != (self._nz, self._nz):
-            raise ValueError(
-                f"Please input the adaptation gain as a {self._nz}-by-{self._nz} array!")
+                "Please input the adaptation gain as an integer or float!")
         if type(cutoff_freq) != int and type(cutoff_freq) != float:
             raise TypeError(
                 "Please input the cutoff frequency as an integer or float!")

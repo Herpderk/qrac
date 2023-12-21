@@ -42,18 +42,11 @@ def main():
         time_step=mpc_T, num_nodes=num_nodes, real_time=rt)
 
     # initialize L1 augmentation
-    As = 0.075 * np.array([
-        [1, 1, 1, 0, 0, 0],
-        [1, 1, 1, 1, 0, 0],
-        [0, 1, 1, 1, 0, 0],
-        [0, 1, 1, 1, 1, 0],
-        [0, 0, 1, 1, 1, 0],
-        [0, 0, 1, 1, 1, 1],
-    ])
-    w = 0.2
-    l1_T = mpc_T/5
+    a_gain = 250
+    w = 40
+    l1_T = mpc_T
     l1_mpc = L1Augmentation(
-        model=model_inacc, control_ref=mpc, adapt_gain=As,
+        model=model_inacc, control_ref=mpc, adapt_gain=a_gain,
         cutoff_freq=w, time_step=l1_T, real_time=rt)
 
     # initialize simulator plant
@@ -65,14 +58,14 @@ def main():
     lb_pose = [-10, -10, 0]
     ub_pose = [10, 10, 10]
     sim = MinimalSim(
-        plant=plant, controller=l1_mpc, lb_pose=lb_pose, ub_pose=ub_pose)
+        plant=plant, controller=l1_mpc, lb_pose=lb_pose, ub_pose=ub_pose, data_len=2000)
 
     # define a circular trajectory
     traj = Circle(r=4, alt=4)
 
     # Run the sim for N control loops
     x0 = np.zeros(model_inacc.nx)
-    N = int(round(30 / l1_T))      # 30 seconds worth of control loops
+    N = int(round(20 / l1_T))      # 20 seconds worth of control loops
     sim.start(x0=x0, max_steps=N, verbose=True)
 
     # track the given trajectory
