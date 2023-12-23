@@ -38,14 +38,14 @@ class Quadrotor():
         self.by = by
         self.k = k
         self.name = name
-        self.f_expl_expr, self.xdot, self.x, self.u = self._get_dynamics()
+        self.xdot, self.x, self.u = self._get_dynamics()
         self.nx = self.x.shape[0]
         self.nu = self.u.shape[0]
 
 
     def get_acados_model(self):
         model_ac = AcadosModel()
-        model_ac.f_expl_expr = self.f_expl_expr
+        model_ac.f_expl_expr = self.xdot
         model_ac.x = self.x
         model_ac.xdot = self.xdot
         model_ac.u = self.u
@@ -95,45 +95,38 @@ class Quadrotor():
             cs.horzcat(cs.sin(psi),     cs.cos(psi),    0),
             cs.horzcat(          0,               0,    1),
         ))
-        R = Rz @ Ry @ Rx
+        self.R = Rz @ Ry @ Rx
+
+        # drag terms
+        self.A = cs.SX(np.diag([self.Ax, self.Ay, self.Az]))
 
         # Diagonal of inertial matrix
-        J = cs.SX(np.diag([self.Ixx, self.Iyy, self.Izz]))
+        self.J = cs.SX(np.diag([self.Ixx, self.Iyy, self.Izz]))
 
-        # thrust of motors 1 to 4
-        u = cs.SX.sym("u", 4)
-
-        # continuous-time dynamics
-        gravity = cs.SX(cs.vertcat(0, 0, -9.81))
-        v = cs.SX(cs.vertcat(x_d, y_d, z_d))
-        w_B = cs.SX(cs.vertcat(phi_d_B, theta_d_B, psi_d_B))
-        A = cs.SX(np.diag([self.Ax, self.Ay, self.Az]))
-
-        f = cs.SX(cs.vertcat(
-            v,
-            cs.inv(W) @ w_B,
-            gravity - A @ v,
-            cs.inv(J) @ (cs.cross(-w_B, J @ w_B)),
-        ))
-
-        g_acc = cs.SX(cs.vertcat(
-            cs.horzcat(R/self.m, cs.SX.zeros(3,3)),
-            cs.horzcat(cs.SX.zeros(3,3), cs.inv(J))
-        ))
-        thrust_alloc = cs.SX(cs.vertcat(
-            cs.SX.zeros(2,4),
-            cs.SX.ones(1,4),
+        # control allocation matrix
+        self.B = cs.SX(cs.vertcat(
             self.by.reshape(1, self.by.shape[0]),
             -self.bx.reshape(1, self.bx.shape[0]),
             cs.horzcat(-self.k[0], self.k[1], -self.k[2], self.k[3]),
         ))
-        g = cs.SX(cs.vertcat(
-            cs.SX.zeros(6, 4),
-            g_acc @ thrust_alloc))
 
-        # control affine formulation
-        Xdot = f + g @ u
-        return Xdot, Xdot, X, u
+        # gravity vector
+        g = cs.SX(cs.vertcat(0, 0, -9.81))
+
+        # thrust of motors 1 to 4
+        u = cs.SX.sym("u", 4)
+        T = cs.SX(cs.vertcat(0, 0, u[0]+u[1]+u[2]+u[3]))
+
+        # continuous-time dynamics
+        v = cs.SX(cs.vertcat(x_d, y_d, z_d))
+        w_B = cs.SX(cs.vertcat(phi_d_B, theta_d_B, psi_d_B))
+        Xdot = cs.SX(cs.vertcat(
+            v,
+            cs.inv(W) @ w_B,
+            (self.R@T - self.A@v)/self.m + g,
+            cs.inv(self.J) @ (self.B@u - cs.cross(w_B, self.J@w_B))
+        ))
+        return Xdot, X, u
 
 
     def _assert(
