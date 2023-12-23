@@ -168,42 +168,18 @@ class L1Augmentation():
         self,
         model: Quadrotor,
     ) -> Tuple[cs.Function]:
-        phi = model.x[3]
-        theta = model.x[4]
-        psi = model.x[5]
-
         # rotation matrix from body frame to inertial frame
-        Rx = cs.SX(cs.vertcat(
-            cs.horzcat(1,            0,            0),
-            cs.horzcat(0,  cs.cos(phi), -cs.sin(phi)),
-            cs.horzcat(0,  cs.sin(phi),  cs.cos(phi)),
-        ))
-        Ry = cs.SX(cs.vertcat(
-            cs.horzcat( cs.cos(theta),  0,  cs.sin(theta)),
-            cs.horzcat(             0,  1,              0),
-            cs.horzcat(-cs.sin(theta),  0,  cs.cos(theta)),
-        ))
-        Rz = cs.SX(cs.vertcat(
-            cs.horzcat(cs.cos(psi),    -cs.sin(psi),    0),
-            cs.horzcat(cs.sin(psi),     cs.cos(psi),    0),
-            cs.horzcat(          0,               0,    1),
-        ))
-        R = Rz @ Ry @ Rx
+        b1 = model.R[:,0]
+        b2 = model.R[:,1]
+        b3 = model.R[:,2]
 
-        J = cs.SX(np.diag([model.Ixx, model.Iyy, model.Izz]))
-        P = cs.SX(cs.vertcat(
-            model.by.reshape(1, model.by.shape[0]),
-            -model.bx.reshape(1, model.bx.shape[0]),
-            cs.horzcat(-model.k[0], model.k[1], -model.k[2], model.k[3]),
-        ))
-
-        f_sym = model.f_expl_expr[6:12]
+        f_sym = model.xdot[6:12]
         g_m_sym = cs.SX(cs.vertcat(
-            R/model.m @ cs.vertcat(cs.SX.zeros(2,4), cs.SX.ones(1,4)),
-            cs.inv(J) @ P
+            b3/model.m @ cs.SX.ones(1,4),
+            cs.inv(model.J) @ model.B
         ))
         g_um_sym = cs.SX(cs.vertcat(
-            R/model.m @ cs.vertcat(cs.SX.eye(2), cs.SX.zeros(1,2)),
+            cs.horzcat(b1, b2)/model.m,
             cs.SX.zeros(3,2)
         ))
 
