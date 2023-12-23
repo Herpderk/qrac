@@ -59,9 +59,6 @@ class AcadosMpc:
         return self._dt
 
 
-
-
-
     @property
     def n_set(self) -> int:
         return self._N * self._nx
@@ -160,7 +157,7 @@ class AcadosMpc:
         ocp.dims.ny = ny
         ocp.dims.nbx_0 = self._nx
         ocp.dims.nbu = self._nu
-        ocp.dims.nbx = 3  # number of states being constrained
+        ocp.dims.nbx = 1 # number of states being constrained
 
         # total horizon in seconds
         ocp.solver_options.tf = self._dt * self._N
@@ -192,15 +189,15 @@ class AcadosMpc:
         ocp.constraints.ubu = u_max
         ocp.constraints.idxbu = np.arange(self._nu)
 
-        # state constraints: roll, pitch, yaw
+        # state constraints: yaw
         ocp.constraints.lbx = np.array(
-            [-np.pi/2, -np.pi/2, 0,]
+            [0,]
         )
         ocp.constraints.ubx = np.array(
-            [np.pi/2, np.pi/2, 2*np.pi,]
+            [2*np.pi,]
         )
         ocp.constraints.idxbx = np.array(
-            [3, 4, 5,]
+            [5,]
         )
 
         # not sure what this is, but this paper say partial condensing HPIPM

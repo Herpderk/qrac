@@ -29,21 +29,21 @@ def main():
         Ax_true, Ay_true, Az_true, bx_true, by_true, k_true)
 
     # initialize mpc
-    Q = np.diag([8,8,8, 0.4,0.4,0.4, 2,2,2, 0.4,0.4,0.4,])
+    Q = np.diag([40,40,40, 1,1,1, 20,20,20, 1,1,1])
     R = np.diag([0, 0, 0, 0])
     max_thrust = 0.64
     u_max = max_thrust * np.ones(4)
     u_min = np.zeros(4)
-    mpc_T = 0.03
-    num_nodes = 10
+    mpc_T = 0.02
+    num_nodes = 14
     rt = False
     mpc = AcadosMpc(
         model=model_inacc, Q=Q, R=R, u_max=u_max, u_min=u_min,
         time_step=mpc_T, num_nodes=num_nodes, real_time=rt)
 
     # initialize L1 augmentation
-    a_gain = 600
-    w = 60
+    a_gain = 2000
+    w = 100
     l1_T = mpc_T
     l1_mpc = L1Augmentation(
         model=model_inacc, control_ref=mpc, adapt_gain=a_gain,
@@ -60,11 +60,11 @@ def main():
     sim = MinimalSim(
         plant=plant, controller=l1_mpc, lb_pose=lb_pose, ub_pose=ub_pose, data_len=2000)
 
-    # define a circular trajectory
-    traj = Circle(r=4, alt=4)
+     # define a circular trajectory
+    traj = Circle(v=8, r=4, alt=4)
 
     # Run the sim for N control loops
-    x0 = np.zeros(model_inacc.nx)
+    x0 = np.array([4,0,0, 0,0,0, 0,0,0, 0,0,0])
     N = int(round(20 / l1_T))      # 20 seconds worth of control loops
     sim.start(x0=x0, max_steps=N, verbose=True)
 
@@ -75,14 +75,11 @@ def main():
     t0 = sim.timestamp
     while sim.is_alive:
         t = sim.timestamp
-        tk = sim.timestamp
         for k in range(num_nodes):
             x_set[k*nx : k*nx + nx] = \
-                np.array(traj.get_setpoint(tk - t0))
-            tk += dt
+                np.array(traj.get_setpoint(t - t0))
+            t += dt
         sim.update_setpoint(x_set=x_set)
-        while sim.timestamp < t+dt and sim.is_alive:
-            pass
 
 
 if __name__=="__main__":
