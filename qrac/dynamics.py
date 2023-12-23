@@ -38,7 +38,7 @@ class Quadrotor():
         self.by = by
         self.k = k
         self.name = name
-        self.xdot, self.x, self.u = self._get_dynamics()
+        self._get_dynamics()
         self.nx = self.x.shape[0]
         self.nu = self.u.shape[0]
 
@@ -53,7 +53,7 @@ class Quadrotor():
         return model_ac
 
 
-    def _get_dynamics(self) -> Tuple:
+    def _get_dynamics(self) -> None:
         # State Variables: position, rotation, velocity, and body-frame angular velocity
         x = cs.SX.sym("x")
         y = cs.SX.sym("y")
@@ -67,7 +67,7 @@ class Quadrotor():
         phi_d_B = cs.SX.sym("phi_d_B")
         theta_d_B = cs.SX.sym("theta_d_B")
         psi_d_B = cs.SX.sym("psi_d_B")
-        X = cs.SX(cs.vertcat(
+        self.x = cs.SX(cs.vertcat(
             x, y, z, phi, theta, psi,\
             x_d, y_d, z_d, phi_d_B, theta_d_B, psi_d_B
         ))
@@ -114,19 +114,19 @@ class Quadrotor():
         g = cs.SX(cs.vertcat(0, 0, -9.81))
 
         # thrust of motors 1 to 4
-        u = cs.SX.sym("u", 4)
-        T = cs.SX(cs.vertcat(0, 0, u[0]+u[1]+u[2]+u[3]))
+        self.u = cs.SX.sym("u", 4)
+        T = cs.SX(cs.vertcat(
+            0, 0, self.u[0]+self.u[1]+self.u[2]+self.u[3]))
 
         # continuous-time dynamics
         v = cs.SX(cs.vertcat(x_d, y_d, z_d))
         w_B = cs.SX(cs.vertcat(phi_d_B, theta_d_B, psi_d_B))
-        Xdot = cs.SX(cs.vertcat(
+        self.xdot = cs.SX(cs.vertcat(
             v,
             cs.inv(W) @ w_B,
             (self.R@T - self.A@v)/self.m + g,
-            cs.inv(self.J) @ (self.B@u - cs.cross(w_B, self.J@w_B))
+            cs.inv(self.J) @ (self.B@self.u - cs.cross(w_B, self.J@w_B))
         ))
-        return Xdot, X, u
 
 
     def _assert(
