@@ -30,7 +30,14 @@ class L1Augmentation():
         self._dstb_m = np.zeros(self._nm)
         self._dstb_um = np.zeros(self._num)
         self._f, self._g_m, self._g_um = self._get_l1_dynamics(model)
-        self._Am = -np.eye(self._nz)
+        self._Am = -np.array([
+            [1, 0, 0, 0, 0, 0],
+            [0, 1, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 1, 0],
+            [0, 0, 0, 0, 0, 1],
+        ])
         self._adapt_gain = adapt_gain
         self._adapt_exp, self._adapt_mat, self._filter_exp = \
             self._get_l1_const(bandwidth, time_step)
