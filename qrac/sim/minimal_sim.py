@@ -262,7 +262,7 @@ class MinimalSim():
 
 
     def _init_fig(self) -> Tuple[matplotlib.figure.Figure, plt.Axes, matplotlib.text.Text]:
-        fig = plt.figure(figsize=(8,8))
+        fig = plt.figure(figsize=(9,8))
         fig.canvas.mpl_connect("key_release_event",
             lambda event: [exit(0) if event.key == "escape" else None])
         ax = fig.add_subplot(projection="3d")
