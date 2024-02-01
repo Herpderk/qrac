@@ -18,6 +18,7 @@ class AcadosPlant():
         self._assert(model, sim_step, control_step)
         self._nx = model.nx
         self._nu = model.nu
+        self._model = model
         self._solver = self._init_solver(model, sim_step, control_step)
         atexit.register(self._clear_files)
 
@@ -38,8 +39,13 @@ class AcadosPlant():
         u: np.ndarray,
         timer=False,
     ) -> np.ndarray:
+        u = np.where(u<self._model.u_max, u, self._model.u_max)
         self._solve(x0, u, timer)
         x = self._solver.get("x")
+        if x[2] < 0:
+            x[2] = 0
+            if x[8] < 0:
+                x[8] = 0
         return x
 
 
