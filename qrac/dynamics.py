@@ -16,9 +16,10 @@ class Quadrotor():
         Ax: float,
         Ay: float,
         Az: float,
-        bx: np.ndarray,
-        by: np.ndarray,
+        xB: np.ndarray,
+        yB: np.ndarray,
         k: np.ndarray,
+        u_max: np.ndarray,
         name="Nonlinear_Quadrotor",
     ) -> None:
         """
@@ -26,7 +27,7 @@ class Quadrotor():
         distances of rotors from the body-frame x-axis, distances of rotors from the body-frame y-axis,
         and torque coefficient magnitudes associated with each rotor's thrust.
         """
-        self._assert(m, Ixx, Iyy, Izz, Ax, Ay, Az, bx, by, k, name)
+        self._assert(m, Ixx, Iyy, Izz, Ax, Ay, Az, xB, yB, k, name)
         self.m = m
         self.Ixx = Ixx
         self.Iyy = Iyy
@@ -34,9 +35,10 @@ class Quadrotor():
         self.Ax = Ax
         self.Ay = Ay
         self.Az = Az
-        self.bx = bx
-        self.by = by
+        self.xB = xB
+        self.yB = yB
         self.k = k
+        self.u_max = u_max
         self.name = name
         self._get_dynamics()
         self.nx = self.x.shape[0]
@@ -105,8 +107,8 @@ class Quadrotor():
 
         # control allocation matrix
         self.B = cs.SX(cs.vertcat(
-            self.by.reshape(1, self.by.shape[0]),
-            -self.bx.reshape(1, self.bx.shape[0]),
+            self.yB.reshape(1, self.yB.shape[0]),
+            -self.xB.reshape(1, self.xB.shape[0]),
             cs.horzcat(-self.k[0], self.k[1], -self.k[2], self.k[3]),
         ))
 
@@ -138,15 +140,15 @@ class Quadrotor():
         Ax: float,
         Ay: float,
         Az: float,
-        bx: np.ndarray,
-        by: np.ndarray,
+        xB: np.ndarray,
+        yB: np.ndarray,
         k: np.ndarray,
         name: str,
     ) -> None:
         for arg in [m, Ixx, Iyy, Izz, Ax, Ay, Az]:
             if (type(arg) != int and type(arg) != float):
                 raise TypeError(f"{arg} should be an int or float!")
-        for arg in [bx, by, k]:
+        for arg in [xB, yB, k]:
             if len(arg) != 4:
                 raise ValueError(f"{arg} should be a float vector of length 4!")
         if type(name) != str:
@@ -166,11 +168,11 @@ def Crazyflie(
     Ixx = 3.144988 * 10**(-5)
     Iyy = 3.151127 * 10**(-5)
     Izz = 7.058874 * 10**(-5)
-    bx = np.array(
+    xB = np.array(
         [0.0283, 0.0283, -0.0283, -0.0283])
-    by = np.array(
+    yB = np.array(
         [0.0283, -0.0283, -0.0283, 0.0283])
     k = 0.005964552 * np.ones(4)
-    crazyflie = Quadrotor(
-        m, Ixx, Iyy, Izz, Ax, Ay, Az, bx, by, k)
-    return crazyflie
+    u_max = 0.15 * np.ones(4)
+    return Quadrotor(
+        m, Ixx, Iyy, Izz, Ax, Ay, Az, xB, yB, k, u_max)
