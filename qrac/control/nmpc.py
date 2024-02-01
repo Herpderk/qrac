@@ -14,14 +14,14 @@ from scipy.interpolate import make_interp_spline
 import matplotlib.pyplot as plt
 import matplotlib
 import time
-from typing import List, Tuple
+from typing import List
 import atexit
 import shutil
 import os
 from qrac.dynamics import Quadrotor
 
 
-class AcadosMpc:
+class NMPC:
     """
     Nonlinear MPC using Acados's OCP solver.
     """

@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 from qrac.dynamics import Crazyflie
-from qrac.control.acados_mpc import AcadosMpc
+from qrac.control.nmpc import NMPC
 import numpy as np
 
 
@@ -18,7 +18,7 @@ def main():
     control_T = 0.01
     num_nodes = 400
     rt = False
-    mpc = AcadosMpc(
+    mpc = NMPC(
         model=model, Q=Q, R=R, u_max=u_max, u_min=u_min, \
         time_step=control_T, num_nodes=num_nodes, real_time=rt,)
 

@@ -3,7 +3,7 @@
 import numpy as np
 from qrac.dynamics import Quadrotor, Crazyflie
 from qrac.trajectory import Circle
-from qrac.control.acados_mpc import AcadosMpc
+from qrac.control.nmpc import NMPC
 from qrac.control.l1_augment import L1Augmentation
 from qrac.sim.acados_plant import AcadosPlant
 from qrac.sim.minimal_sim import MinimalSim
@@ -37,7 +37,7 @@ def main():
     mpc_T = 0.01
     num_nodes = 30
     rt = False
-    mpc = AcadosMpc(
+    mpc = NMPC(
         model=model_inacc, Q=Q, R=R, u_max=u_max, u_min=u_min,
         time_step=mpc_T, num_nodes=num_nodes, real_time=rt)
 
