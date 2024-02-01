@@ -13,31 +13,31 @@ def main():
     model_inacc = Crazyflie(Ax=0, Ay=0, Az=0)
 
     # true plant model
-    m_true = 4 * model_inacc.m
-    Ixx_true = 4 * model_inacc.Ixx
-    Iyy_true = 4 * model_inacc.Iyy
-    Izz_true = 4 * model_inacc.Izz
+    m_true = 1.8 * model_inacc.m
+    Ixx_true = 10 * model_inacc.Ixx
+    Iyy_true = 10 * model_inacc.Iyy
+    Izz_true = 10 * model_inacc.Izz
     Ax_true = 0
     Ay_true = 0
     Az_true = 0
-    bx_true = model_inacc.bx
-    by_true = model_inacc.by
+    xB_true = model_inacc.xB
+    yB_true = model_inacc.yB
     k_true = model_inacc.k
+    u_max_true = model_inacc.u_max
     model_acc = Quadrotor(
         m_true, Ixx_true, Iyy_true, Izz_true,
-        Ax_true, Ay_true, Az_true, bx_true, by_true, k_true)
+        Ax_true, Ay_true, Az_true, xB_true, yB_true, k_true, u_max_true)
 
-    # initialize controller
-    Q = np.diag([40,40,40, 1,1,1, 20,20,20, 1,1,1])
+    # initialize mpc
+    Q = np.diag([40,40,40, 10,10,10, 20,20,20, 10,10,10])
     R = np.diag([0, 0, 0, 0])
-    max_thrust = 0.64           # N
-    u_max = max_thrust * np.ones(4)
+    u_max = u_max_true #model_inacc.u_max
     u_min = np.zeros(4)
     mpc_T = 0.01
-    num_nodes = 32
+    num_nodes = 30
     rt = False
     mpc = AcadosMpc(
-        model=model_inacc, Q=Q, R=R, u_max=u_max, u_min=u_min, \
+        model=model_inacc, Q=Q, R=R, u_max=u_max, u_min=u_min,
         time_step=mpc_T, num_nodes=num_nodes, real_time=rt,)
 
     # initialize simulator plant
@@ -52,11 +52,11 @@ def main():
         plant=plant, controller=mpc, lb_pose=lb_pose, ub_pose=ub_pose,)
 
      # define a circular trajectory
-    traj = Circle(v=4, r=4, alt=4)
+    traj = Circle(v=4, r=8, alt=8)
 
     # Run the sim for N control loops
-    x0 = np.array([4,0,0, 0,0,0, 0,0,0, 0,0,0])
-    N = int(round(30 / mpc_T))      # 20 seconds worth of control loops
+    x0 = np.array([8,0,0, 0,0,0, 0,0,0, 0,0,0])
+    N = int(round(30 / mpc_T))      # 30 seconds worth of control loops
     sim.start(x0=x0, max_steps=N, verbose=True)
 
     # track the given trajectory

@@ -13,13 +13,12 @@ def main():
     model = Crazyflie(Ax=0, Ay=0, Az=0)
 
     # initialize controller
-    Q = np.diag([40,40,40, 1,1,1, 20,20,20, 1,1,1])
+    Q = np.diag([40,40,40, 10,10,10, 20,20,20, 10,10,10])
     R = np.diag([0, 0, 0, 0])
-    max_thrust = 0.64           # N
-    u_max = max_thrust * np.ones(4)
+    u_max = model.u_max
     u_min = np.zeros(4)
     mpc_T = 0.01
-    num_nodes = 32
+    num_nodes = 30
     rt = False
     mpc = AcadosMpc(
         model=model, Q=Q, R=R, u_max=u_max, u_min=u_min, \

@@ -10,7 +10,7 @@ def main():
     model = Crazyflie(Ax=0, Ay=0, Az=0)
 
     # initialize controller
-    Q = np.diag([40,40,40, 1,1,1, 20,20,20, 1,1,1])
+    Q = np.diag([1,1,1, 1,1,1, 1,1,1, 1,1,1])
     R = np.diag([0, 0, 0, 0])
     max_thrust = 0.64           # N
     u_max = max_thrust * np.ones(4)
