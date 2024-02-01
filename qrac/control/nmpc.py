@@ -134,10 +134,9 @@ class NMPC:
             while time.perf_counter() - st < self._dt:
                 pass
 
-
     def _init_solver(
         self,
-        model: AcadosModel,
+        model: Quadrotor,
         Q: np.ndarray,
         R: np.ndarray,
         u_max: np.ndarray,
