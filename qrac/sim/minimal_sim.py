@@ -38,6 +38,8 @@ class MinimalSim():
         self._data_ind = 0
         self._x = mp.Array("f", np.zeros(plant.nx))
         self._x_set = mp.Array("f", np.zeros(controller.n_set))
+        self._dstb = mp.Array("f", np.zeros(plant.nx))
+        self._prev_dstb = mp.Array("f", np.zeros(plant.nx))
         self._max_steps = mp.Value("i", -1)
         self._steps = mp.Value("i", 0)
         self._sim_time = mp.Value("f", 0.0)
@@ -93,6 +95,19 @@ class MinimalSim():
                 "You cannot assign a setpoint before the sim starts.")
 
 
+    def update_disturbance(
+        self,
+        disturbance: np.ndarray,
+    ) -> None:
+        assert disturbance.shape[0] == self._plant.nx
+        try:
+            self._prev_dstb[:] = self._dstb[:]
+            self._dstb[:] = disturbance
+        except AttributeError:
+            raise RuntimeError(
+                "You cannot assign a disturbance before the sim starts.")
+        
+
     def _reset(
         self,
         x0: np.ndarray,
@@ -105,6 +120,7 @@ class MinimalSim():
         self._data_ind = 0
         self._x[:] = x0
         self._x_set[:] = np.tile(x0, int(self._controller.n_set/x0.shape[0]))
+        self._dstb[:] = np.zeros(self._plant.nx)
         self._max_steps.value = max_steps
         self._steps.value = 0
         self._sim_time.value = 0.0
@@ -112,7 +128,7 @@ class MinimalSim():
 
     def _run_procs(self) -> None:
         frontend_proc = mp.Process(target=self._run_frontend, args=[])
-        plant_proc = mp.Process(target=self._run_plant, args=[])
+        plant_proc = mp.Process(target=self._run_backend, args=[])
         frontend_proc.start()
         plant_proc.start()
         plant_proc.join()
@@ -238,19 +254,20 @@ class MinimalSim():
         plt.pause(0.00001)
 
 
-    def _run_plant(self) -> None:
+    def _run_backend(self) -> None:
         while self._run_flag.value:
-            x0 = np.array(self._x[:])
-            x_set = np.array(self._x_set[:])
+            x = np.array(self._x[:])
+            xset = np.array(self._x_set[:])
 
             timer = self._verbose.value
-            u = self._controller.get_input(x0=x0, x_set=x_set, timer=timer)
-            x = self._plant.update(x0=x0, u=u, timer=self._verbose.value)
-            self._x[:] = x
+            u = self._controller.get_input(x=x, xset=xset, timer=timer)
+            x = self._plant.update(x=x, u=u, timer=self._verbose.value)
+            self._x[:] = x + np.array(self._prev_dstb[:]) #+ np.array(self._dstb[:])
 
             if self._verbose.value:
                 print(f"\nu: {u}")
-                print(f"x: {x}\n")
+                print(f"x: {x}")
+                print(f"state disturbance: {self._dstb[:]}\n")
             self._check_steps()
 
 
