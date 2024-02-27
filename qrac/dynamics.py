@@ -4,7 +4,7 @@ import casadi as cs
 import numpy as np
 from typing import Tuple
 from acados_template import AcadosModel
-
+    
 
 class Quadrotor():
     def __init__(
@@ -19,6 +19,7 @@ class Quadrotor():
         xB: np.ndarray,
         yB: np.ndarray,
         k: np.ndarray,
+        u_min: np.ndarray,
         u_max: np.ndarray,
         name="Nonlinear_Quadrotor",
     ) -> None:
@@ -38,14 +39,14 @@ class Quadrotor():
         self.xB = xB
         self.yB = yB
         self.k = k
+        self.u_min = u_min
         self.u_max = u_max
         self.name = name
         self._get_dynamics()
-        self.nx = self.x.shape[0]
-        self.nu = self.u.shape[0]
+        self.nx, self.nu = self.get_dims()
 
 
-    def get_acados_model(self):
+    def get_acados_model(self) -> AcadosModel:
         model_ac = AcadosModel()
         model_ac.f_expl_expr = self.xdot
         model_ac.x = self.x
@@ -53,6 +54,12 @@ class Quadrotor():
         model_ac.u = self.u
         model_ac.name = self.name
         return model_ac
+
+
+    def get_dims(self) -> Tuple[float]:
+        nx = self.x.shape[0]
+        nu = self.u.shape[0]
+        return nx, nu
 
 
     def _get_dynamics(self) -> None:
@@ -63,19 +70,19 @@ class Quadrotor():
         phi = cs.SX.sym("phi")     # roll
         theta = cs.SX.sym("theta") # pitch
         psi = cs.SX.sym("psi")     # yaw
-        x_d = cs.SX.sym("x_d")     # time-derivatives
-        y_d = cs.SX.sym("y_d")
-        z_d = cs.SX.sym("z_d")
-        phi_d_B = cs.SX.sym("phi_d_B")
-        theta_d_B = cs.SX.sym("theta_d_B")
-        psi_d_B = cs.SX.sym("psi_d_B")
+        x_dot = cs.SX.sym("x_dot")     # time-derivatives
+        y_dot = cs.SX.sym("y_dot")
+        z_dot = cs.SX.sym("z_dot")
+        p = cs.SX.sym("p")
+        q = cs.SX.sym("q")
+        r = cs.SX.sym("r")
         self.x = cs.SX(cs.vertcat(
             x, y, z, phi, theta, psi,\
-            x_d, y_d, z_d, phi_d_B, theta_d_B, psi_d_B
+            x_dot, y_dot, z_dot, p, q, r
         ))
 
         # transformation from inertial to body frame ang vel
-        W = cs.SX(cs.vertcat(
+        self.W = cs.SX(cs.vertcat(
             cs.horzcat(1, 0, -cs.sin(theta)),
             cs.horzcat(0, cs.cos(phi), cs.cos(theta)*cs.sin(phi)),
             cs.horzcat(0, -cs.sin(phi), cs.cos(theta)*cs.cos(phi)),
@@ -113,20 +120,20 @@ class Quadrotor():
         ))
 
         # gravity vector
-        g = cs.SX(cs.vertcat(0, 0, -9.81))
+        self.g = cs.SX(cs.vertcat(0, 0, -9.81))
 
         # thrust of motors 1 to 4
         self.u = cs.SX.sym("u", 4)
-        T = cs.SX(cs.vertcat(
+        self.T = cs.SX(cs.vertcat(
             0, 0, self.u[0]+self.u[1]+self.u[2]+self.u[3]))
 
         # continuous-time dynamics
-        v = cs.SX(cs.vertcat(x_d, y_d, z_d))
-        w_B = cs.SX(cs.vertcat(phi_d_B, theta_d_B, psi_d_B))
+        v = cs.SX(cs.vertcat(x_dot, y_dot, z_dot))
+        w_B = cs.SX(cs.vertcat(p, q, r))
         self.xdot = cs.SX(cs.vertcat(
             v,
-            cs.inv(W) @ w_B,
-            (self.R@T - self.A@v)/self.m + g,
+            cs.inv(self.W) @ w_B,
+            (self.R@self.T - self.A@v)/self.m + self.g,
             cs.inv(self.J) @ (self.B@self.u - cs.cross(w_B, self.J@w_B))
         ))
 
@@ -155,6 +162,69 @@ class Quadrotor():
             raise TypeError("The name should be a string!")
 
 
+class ParamAffineQuadrotor(Quadrotor):
+    def __init__(
+        self,
+        model: Quadrotor
+    ) -> None:
+        super().__init__(
+            model.m, model.Ixx, model.Iyy, model.Izz,
+            model.Ax, model.Ay, model.Az, model.xB, model.yB,
+            model.k, model.u_max, "Parameter_Affine_Quadrotor"
+        )
+        self._get_param_affine_dynamics()
+
+
+    def get_parameters(self) -> np.ndarray:
+        param = np.array([
+            1/self.m, self.Ax/self.m,
+            self.Ay/self.m, self.Az/self.m,
+            1/self.Ixx, 1/self.Iyy, 1/self.Izz,
+            (self.Izz-self.Iyy)/self.Ixx,
+            (self.Ixx-self.Izz)/self.Iyy,
+            (self.Iyy-self.Ixx)/self.Izz
+        ])
+        return param
+
+
+    def _get_param_affine_dynamics(self) -> None:
+        param = cs.SX.sym("param", 10)
+        x_aug = cs.SX(cs.vertcat(
+            self.x, param
+        ))
+
+        vels = self.x[6:9]
+        p = x_aug[9]
+        q = x_aug[10]
+        r = x_aug[11]
+
+        self.F = cs.SX(cs.vertcat(
+            vels,
+            cs.inv(self.W) @ cs.vertcat(p,q,r),
+            self.g,
+            cs.SX.zeros(3),
+            cs.SX.zeros(10)
+        ))
+        self.G = cs.SX(cs.vertcat(
+            cs.SX.zeros(6, 10),
+            cs.horzcat(
+                self.R @ self.T,
+                cs.diag(-vels),
+                cs.SX.zeros(3, 6)
+            ),
+            cs.horzcat(
+                cs.SX.zeros(3, 4), 
+                cs.diag(self.B @ self.u),
+                -cs.diag(cs.vertcat(q*r, p*r, p*q))
+            ),
+            cs.SX.zeros(10, 10)
+        ))
+
+        self.x = x_aug
+        self.xdot = self.F + self.G @ param
+        self.nx, self.nu = self.get_dims()
+
+
 def Crazyflie(
     Ax: float,
     Ay: float,
@@ -173,6 +243,7 @@ def Crazyflie(
     yB = np.array(
         [0.0283, -0.0283, -0.0283, 0.0283])
     k = 0.005964552 * np.ones(4)
-    u_max = 0.15 * np.ones(4)
+    u_min = -0.15 * np.ones(4)
+    u_max = -u_min
     return Quadrotor(
-        m, Ixx, Iyy, Izz, Ax, Ay, Az, xB, yB, k, u_max)
+        m, Ixx, Iyy, Izz, Ax, Ay, Az, xB, yB, k, u_min, u_max)
