@@ -12,8 +12,8 @@ class AcadosPlant():
     def __init__(
         self,
         model: Quadrotor,
-        sim_step,
-        control_step,
+        sim_step: float,
+        control_step: float,
     ) -> None:
         self._assert(model, sim_step, control_step)
         self._nx = model.nx
@@ -35,12 +35,13 @@ class AcadosPlant():
 
     def update(
         self,
-        x0: np.ndarray,
+        x: np.ndarray,
         u: np.ndarray,
         timer=False,
     ) -> np.ndarray:
+        u = np.where(u>self._model.u_min, u, self._model.u_min)
         u = np.where(u<self._model.u_max, u, self._model.u_max)
-        self._solve(x0, u, timer)
+        self._solve(x, u, timer)
         x = self._solver.get("x")
         if x[2] < 0:
             x[2] = 0
@@ -51,15 +52,14 @@ class AcadosPlant():
 
     def _solve(
         self,
-        x0: np.ndarray,
+        x: np.ndarray,
         u: np.ndarray,
         timer: bool,
     ) -> None:
         st = time.perf_counter()
-        assert len(x0) == self._nx
+        assert len(x) == self._nx
         assert len(u) == self._nu
-
-        self._solver.set("x", x0)
+        self._solver.set("x", x)
         self._solver.set("u", u)
         status = self._solver.solve()
         if status != 0:
