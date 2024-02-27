@@ -19,7 +19,7 @@ class L1Augmentation():
         time_step: float,
         real_time: bool,
     ) -> None:
-        self._z_ind = 6
+        self._z_idx = 6
         self._nz = 6
         self._nm = 4
         self._num = 2
@@ -29,7 +29,7 @@ class L1Augmentation():
         self._z = np.zeros(self._nz)
         self._dstb_m = np.zeros(self._nm)
         self._dstb_um = np.zeros(self._num)
-        self._f, self._g_m, self._g_um = self._get_l1_dynamics(model)
+        self._f, self._g_m, self._g_um = self._get_dynamics_funcs(model)
         self._Am = -np.array([
             [1, 0, 0, 0, 0, 0],
             [0, 1, 0, 0, 0, 0],
@@ -50,7 +50,7 @@ class L1Augmentation():
         self._loop_ct = int(round(control_ref.dt / time_step))
 
         self._x = mp.Array("f", np.zeros(model.nx))
-        self._x_set = mp.Array("f", np.zeros(control_ref.n_set))
+        self._xset = mp.Array("f", np.zeros(control_ref.n_set))
         self._u_ref = mp.Array("f", np.zeros(model.nu))
         self._timer = mp.Value("b", False)
         if real_time:
@@ -69,15 +69,15 @@ class L1Augmentation():
 
     def get_input(
         self,
-        x0: np.ndarray,
-        x_set: np.ndarray,
+        x: np.ndarray,
+        xset: np.ndarray,
         timer=False,
     ) -> np.ndarray:
-        assert x0.shape[0] == self._model.nx
-        assert x_set.shape[0] == self._ctrl_ref.n_set
+        assert x.shape[0] == self._model.nx
+        assert xset.shape[0] == self._ctrl_ref.n_set
         self._timer.value = timer
-        self._x[:] = x0
-        self._x_set[:] = x_set
+        self._x[:] = x
+        self._xset[:] = xset
         if self._rt:
             self._update_rt()
         else:
@@ -106,10 +106,10 @@ class L1Augmentation():
 
 
     def _update_ctrl_ref(self) -> np.ndarray:
-        x0 = np.array(self._x[:])
-        x_set = np.array(self._x_set[:])
+        x = np.array(self._x[:])
+        xset = np.array(self._xset[:])
         timer = self._timer.value
-        self._u_ref[:] = self._ctrl_ref.get_input(x0=x0, x_set=x_set, timer=timer)
+        self._u_ref[:] = self._ctrl_ref.get_input(x=x, xset=xset, timer=timer)
 
 
     def _run_l1(self) -> None:
@@ -128,7 +128,7 @@ class L1Augmentation():
         x = np.array(self._x[:])
         u_ref = np.array(self._u_ref[:])
         z = np.array(self._z[:])
-        z_err = np.array(z - x[self._z_ind : self._z_ind+self._nz])
+        z_err = np.array(z - x[self._z_idx : self._z_idx+self._nz])
         f = np.array(self._f(x, u_ref)).reshape(self._nz)
         g_m = np.array(self._g_m(x))
         g_um = np.array(self._g_um(x))
@@ -143,7 +143,7 @@ class L1Augmentation():
     def _adaptation(self) -> None:
         x = np.array(self._x[:])
         z = np.array(self._z[:])
-        z_err = np.array(z - x[self._z_ind : self._z_ind+self._nz])
+        z_err = np.array(z - x[self._z_idx : self._z_idx+self._nz])
         g_m = np.array(self._g_m(x))
         g_um = np.array(self._g_um(x))
 
@@ -171,7 +171,7 @@ class L1Augmentation():
         return adapt_exp, adapt_mat, filter_exp
 
 
-    def _get_l1_dynamics(
+    def _get_dynamics_funcs(
         self,
         model: Quadrotor,
     ) -> Tuple[cs.Function]:
