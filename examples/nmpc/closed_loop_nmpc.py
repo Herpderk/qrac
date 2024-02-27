@@ -17,8 +17,8 @@ def main():
     R = np.diag([0, 0, 0, 0])
     u_max = model.u_max
     u_min = np.zeros(4)
-    mpc_T = 0.01
-    num_nodes = 30
+    mpc_T = 0.02
+    num_nodes = 50
     rt = False
     mpc = NMPC(
         model=model, Q=Q, R=R, u_max=u_max, u_min=u_min, \
