@@ -15,9 +15,9 @@ def main():
 
     # true plant model
     m_true = 2 * model_inacc.m
-    Ixx_true = 25 * model_inacc.Ixx
-    Iyy_true = 25 * model_inacc.Iyy
-    Izz_true = 25 * model_inacc.Izz
+    Ixx_true = 15 * model_inacc.Ixx
+    Iyy_true = 15 * model_inacc.Iyy
+    Izz_true = 15 * model_inacc.Izz
     Ax_true = 0
     Ay_true = 0
     Az_true = 0
@@ -43,7 +43,7 @@ def main():
         time_step=mpc_T, num_nodes=num_nodes, real_time=rt)
 
     # initialize L1 augmentation
-    a_gain = 50
+    a_gain = 10
     w = 1000
     l1_T = mpc_T/5
     l1_mpc = L1Augmentation(
