@@ -12,14 +12,13 @@ def main():
     # initialize controller
     Q = np.diag([1,1,1, 1,1,1, 1,1,1, 1,1,1])
     R = np.diag([0, 0, 0, 0])
-    max_thrust = 0.64           # N
-    u_max = max_thrust * np.ones(4)
-    u_min = np.zeros(4)
-    control_T = 0.01
-    num_nodes = 400
+    u_min = model.u_min
+    u_max = model.u_max
+    control_T = 0.05
+    num_nodes = 200
     rt = False
     mpc = NMPC(
-        model=model, Q=Q, R=R, u_max=u_max, u_min=u_min, \
+        model=model, Q=Q, R=R, u_min=u_min, u_max=u_max,  \
         time_step=control_T, num_nodes=num_nodes, real_time=rt,)
 
     # run a single control loop with trajectory prediction
@@ -27,7 +26,7 @@ def main():
     # the setpoint must span the entire prediction horizon
     x_set = np.tile(
         np.array([2,-2, 4, 0,0,0, 0,0,0, 0,0,0]), num_nodes)
-    mpc.get_state(x0, x_set, timer=True, visuals=True)
+    mpc.get_trajectory(x0, x_set, timer=True, visuals=True)
 
 
 if __name__=="__main__":

@@ -10,15 +10,16 @@ May need to install qpOASES version 3.1 as well.
 
 from acados_template import AcadosOcpSolver, AcadosOcp, AcadosModel
 import numpy as np
+from scipy.linalg import block_diag
 from scipy.interpolate import make_interp_spline
 import matplotlib.pyplot as plt
 import matplotlib
 import time
-from typing import List
+from typing import List, Tuple
 import atexit
 import shutil
 import os
-from qrac.dynamics import Quadrotor
+from qrac.dynamics import Quadrotor, ParamAffineQuadrotor
 
 
 class NMPC:
@@ -31,8 +32,8 @@ class NMPC:
         model: Quadrotor,
         Q: np.ndarray,
         R: np.ndarray,
-        u_max: np.ndarray,
         u_min: np.ndarray,
+        u_max: np.ndarray,
         time_step: float,
         num_nodes: int,
         real_time: bool,
@@ -66,73 +67,86 @@ class NMPC:
 
     def get_input(
         self,
-        x0: np.ndarray,
-        x_set: np.ndarray,
+        x: np.ndarray,
+        xset: np.ndarray,
         timer=False,
     ) -> np.ndarray:
         """
         Get the first control input from the optimization.
         """
-        self._solve(x0, x_set, timer)
+        self._solve(x, xset, timer)
         nxt_ctrl = self._solver.get(0, "u")
         return nxt_ctrl
 
 
     def get_state(
         self,
-        x0: np.ndarray,
-        x_set: np.ndarray,
+        x: np.ndarray,
+        xset: np.ndarray,
         timer=False,
-        visuals=False,
     ) -> np.ndarray:
         """
         Get the next state from the optimization.
         """
-        self._solve(x0, x_set, timer)
+        self._solve(x, xset, timer)
         nxt_state = self._solver.get(1, "x")
-
-        if visuals:
-            opt_us = np.zeros((self._N, self._nu))
-            opt_xs = np.zeros((self._N, self._nx))
-            for k in range(self._N):
-                opt_us[k] = self._solver.get(k, "u")
-                opt_xs[k] = self._solver.get(k, "x")
-            self._vis_plots(opt_us, opt_xs)
         return nxt_state
+
+
+    def get_trajectory(
+        self,
+        x: np.ndarray,
+        xset: np.ndarray,
+        timer=False,
+        visuals=False,
+    ) -> Tuple[np.ndarray]:
+        """
+        Get the next state from the optimization.
+        """
+        self._solve(x, xset, timer)
+        opt_xs = np.zeros((self._N, self._nx))
+        opt_us = np.zeros((self._N, self._nu))
+        for k in range(self._N):
+            opt_xs[k] = self._solver.get(k, "x")
+            opt_us[k] = self._solver.get(k, "u")
+        if visuals:
+            self._vis_plots(opt_xs, opt_us)
+        return opt_xs, opt_us
 
 
     def _solve(
         self,
-        x0: np.ndarray,
-        x_set: np.ndarray,
+        x: np.ndarray,
+        xset: np.ndarray,
         timer: bool,
     ) -> None:
         """
         Set initial state and setpoint,
         then solve the optimization once.
         """
-        st = time.perf_counter()
-        assert x0.shape[0] == self._nx
-        assert x_set.shape[0] == self.n_set
+        if timer: st = time.perf_counter()
+        assert x.shape[0] == self._nx
+        assert xset.shape[0] == self.n_set
 
-        # bound x0 to initial state
-        self._solver.set(0, "lbx", x0)
-        self._solver.set(0, "ubx", x0)
+        # bound x to initial state
+        self._solver.set(0, "lbx", x)
+        self._solver.set(0, "ubx", x)
 
         # the reference input will be the hover input
-        #x_set = x_set.reshape(self.n_set)
         for k in range(self._N):
             y_ref = np.concatenate(
-                (x_set[k*self._nx : k*self._nx + self._nx], self._u_min))
+                (xset[k*self._nx : k*self._nx + self._nx], self._u_min))
             self._solver.set(k, "yref", y_ref)
 
         # solve for the next ctrl input
         self._solver.solve()
+        #self._solver.print_statistics()
         if timer:
             print(f"mpc runtime: {time.perf_counter() - st}")
         if self._rt:
             while time.perf_counter() - st < self._dt:
                 pass
+
 
     def _init_solver(
         self,
@@ -154,9 +168,10 @@ class NMPC:
         ocp.dims.nx = self._nx
         ocp.dims.nu = self._nu
         ocp.dims.ny = ny
-        ocp.dims.nbx_0 = self._nx
-        ocp.dims.nbu = self._nu
         ocp.dims.nbx = 1 # number of states being constrained
+        ocp.dims.nbx_0 = ocp.dims.nx
+        ocp.dims.nbx_e = ocp.dims.nbx
+        ocp.dims.nbu = self._nu
 
         # total horizon in seconds
         ocp.solver_options.tf = self._dt * self._N
@@ -166,10 +181,7 @@ class NMPC:
         ocp.cost.cost_type_e = "LINEAR_LS"
 
         # W is a block diag matrix of Q and R costs from standard QP
-        ocp.cost.W = np.block([
-                [Q, np.zeros((self._nx, self._nu))],
-                [np.zeros((self._nu, self._nx)), R],
-            ])
+        ocp.cost.W = block_diag(Q,R)
 
         # use V coeffs to map x & u to y
         ocp.cost.Vx = np.zeros((ny, self._nx))
@@ -198,15 +210,19 @@ class NMPC:
         ocp.constraints.idxbx = np.array(
             [5,]
         )
+        ocp.constraints.idxbx_e = ocp.constraints.idxbx
+        ocp.constraints.lbx_e = ocp.constraints.lbx
+        ocp.constraints.ubx_e = ocp.constraints.ubx
 
-        # not sure what this is, but this paper say partial condensing HPIPM
-        # is fastest: https://cdn.syscop.de/publications/Frison2020a.pdf
-        ocp.solver_options.hpipm_mode = "SPEED_ABS"
+        # partial condensing HPIPM is fastest:
+        # https://cdn.syscop.de/publications/Frison2020a.pdf
+        ocp.solver_options.hpipm_mode = "BALANCE"
         ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
         ocp.solver_options.qp_solver_iter_max = 10
         ocp.solver_options.qp_solver_warm_start = 1
         ocp.solver_options.nlp_solver_type = "SQP"
-        ocp.solver_options.nlp_solver_max_iter = 15
+        ocp.solver_options.nlp_solver_max_iter = 10
+        ocp.solver_options.nlp_solver_tol_stat = 10**-4
         ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
         ocp.solver_options.integrator_type = "ERK"
         ocp.solver_options.print_level = 0
@@ -218,8 +234,8 @@ class NMPC:
 
     def _vis_plots(
         self,
-        ctrl_inp: np.ndarray,
         traj: np.ndarray,
+        ctrl_inp: np.ndarray,
     ) -> None:
         """
         Display the series of control inputs
@@ -252,7 +268,7 @@ class NMPC:
         legend = ["roll rate", "pitch rate", "yaw rate"]
         self._plot_trajectory(
             axs[4], traj[:, 9:12], t, interp_N, legend,
-            "body frame angular velocity (rad/s)",
+            "body frame ang vel (rad/s)",
         )
 
         for ax in axs.flat:
@@ -302,8 +318,9 @@ class NMPC:
         real_time: bool,
     ) -> None:
         if type(model) != Quadrotor:
-            raise TypeError(
-                "The inputted model must be of type 'Quadrotor'!")
+            if type(model) != ParamAffineQuadrotor:
+                raise TypeError(
+                    "The inputted model must be of type 'Quadrotor'!")
         if type(Q) != np.ndarray:
             raise TypeError(
                 "Please input the cost matrix as a numpy array!")
