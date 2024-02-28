@@ -162,7 +162,7 @@ class Quadrotor():
             raise TypeError("The name should be a string!")
 
 
-class ParamAffineQuadrotor(Quadrotor):
+class ParameterAffineQuadrotor(Quadrotor):
     def __init__(
         self,
         model: Quadrotor
@@ -170,8 +170,9 @@ class ParamAffineQuadrotor(Quadrotor):
         super().__init__(
             model.m, model.Ixx, model.Iyy, model.Izz,
             model.Ax, model.Ay, model.Az, model.xB, model.yB,
-            model.k, model.u_max, "Parameter_Affine_Quadrotor"
+            model.k, model.u_min, model.u_max, "Parameter_Affine_Quadrotor"
         )
+        assert type(model) == Quadrotor
         self._get_param_affine_dynamics()
 
 
@@ -223,6 +224,34 @@ class ParamAffineQuadrotor(Quadrotor):
         self.x = x_aug
         self.xdot = self.F + self.G @ param
         self.nx, self.nu = self.get_dims()
+
+
+class DisturbedQuadrotor(Quadrotor):
+    def __init__(
+            self,
+            model: Quadrotor
+        ) -> None:
+            super().__init__(
+                model.m, model.Ixx, model.Iyy, model.Izz,
+                model.Ax, model.Ay, model.Az, model.xB, model.yB,
+                model.k, model.u_min, model.u_max, "Disturbed_Quadrotor"
+            )
+            assert type(model) == Quadrotor
+            self.nd = 6
+            self._get_disturbed_dynamics()
+
+
+    def _get_disturbed_dynamics(self) -> None:
+        d = cs.SX.sym("disturbance", self.nd)
+        x_aug = cs.SX(cs.vertcat(self.x, d))
+        xdot_aug = cs.SX(cs.vertcat(
+            self.xdot[: self.nx-self.nd],
+            self.xdot[self.nx-self.nd : self.nx] + d,
+            cs.SX.zeros(self.nd)
+        ))
+        self.x = x_aug
+        self.xdot = xdot_aug
+        #self.nx, self.nu = self.get_dims()
 
 
 def Crazyflie(
