@@ -5,7 +5,7 @@ import numpy as np
 import time
 import atexit
 import os
-from qrac.dynamics import Quadrotor
+from qrac.dynamics import Quadrotor, DisturbedQuadrotor
 
 
 class AcadosPlant():
@@ -16,10 +16,11 @@ class AcadosPlant():
         control_step: float,
     ) -> None:
         self._assert(model, sim_step, control_step)
+        self._model = DisturbedQuadrotor(model)
         self._nx = model.nx
         self._nu = model.nu
-        self._model = model
-        self._solver = self._init_solver(model, sim_step, control_step)
+        self._nd = self._model.nd
+        self._solver = self._init_solver(self._model, sim_step, control_step)
         atexit.register(self._clear_files)
 
 
@@ -33,16 +34,22 @@ class AcadosPlant():
         return self._nu
 
 
+    @property
+    def nd(self) -> int:
+        return self._nd
+
+
     def update(
         self,
         x: np.ndarray,
         u: np.ndarray,
+        d: np.ndarray,
         timer=False,
     ) -> np.ndarray:
         u = np.where(u>self._model.u_min, u, self._model.u_min)
         u = np.where(u<self._model.u_max, u, self._model.u_max)
-        self._solve(x, u, timer)
-        x = self._solver.get("x")
+        self._solve(x, u, d, timer)
+        x = self._solver.get("x")[:self._nx]
         if x[2] < 0:
             x[2] = 0
             if x[8] < 0:
@@ -54,12 +61,14 @@ class AcadosPlant():
         self,
         x: np.ndarray,
         u: np.ndarray,
+        d: np.ndarray,
         timer: bool,
     ) -> None:
         st = time.perf_counter()
         assert len(x) == self._nx
         assert len(u) == self._nu
-        self._solver.set("x", x)
+        assert len(d) == self._nd
+        self._solver.set("x", np.concatenate((x,d)))
         self._solver.set("u", u)
         status = self._solver.solve()
         if status != 0:

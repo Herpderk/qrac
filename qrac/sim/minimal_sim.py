@@ -35,11 +35,11 @@ class MinimalSim():
         self._run_flag = mp.Value("b", False)
         self._verbose = mp.Value("b", False)
         self._pose_data = np.zeros((data_len, 3))
-        self._data_ind = 0
+        self._data_idx = 0
         self._x = mp.Array("f", np.zeros(plant.nx))
         self._x_set = mp.Array("f", np.zeros(controller.n_set))
-        self._dstb = mp.Array("f", np.zeros(plant.nx))
-        self._prev_dstb = mp.Array("f", np.zeros(plant.nx))
+        self._d = mp.Array("f", np.zeros(plant.nd))
+        #self._prev_dstb = mp.Array("f", np.zeros(plant.nx))
         self._max_steps = mp.Value("i", -1)
         self._steps = mp.Value("i", 0)
         self._sim_time = mp.Value("f", 0.0)
@@ -99,10 +99,10 @@ class MinimalSim():
         self,
         disturbance: np.ndarray,
     ) -> None:
-        assert disturbance.shape[0] == self._plant.nx
+        assert disturbance.shape[0] == self._plant.nd
         try:
-            self._prev_dstb[:] = self._dstb[:]
-            self._dstb[:] = disturbance
+            #self._prev_dstb[:] = self._d[:]
+            self._d[:] = disturbance
         except AttributeError:
             raise RuntimeError(
                 "You cannot assign a disturbance before the sim starts.")
@@ -117,10 +117,10 @@ class MinimalSim():
         self._run_flag.value = True
         self._verbose.value = verbose
         self._pose_data = np.zeros((self._data_len, 3))
-        self._data_ind = 0
+        self._data_idx = 0
         self._x[:] = x0
         self._x_set[:] = np.tile(x0, int(self._controller.n_set/x0.shape[0]))
-        self._dstb[:] = np.zeros(self._plant.nx)
+        self._d[:] = np.zeros(self._plant.nd)
         self._max_steps.value = max_steps
         self._steps.value = 0
         self._sim_time.value = 0.0
@@ -165,16 +165,16 @@ class MinimalSim():
         x: np.ndarray,
     ) -> None:
         curr_pose = x[:3]
-        prev_pose = self._pose_data[self._data_ind-1]
+        prev_pose = self._pose_data[self._data_idx-1]
         dist = np.linalg.norm(curr_pose-prev_pose)
         if dist < 0.1:
             pass
         else:
-            self._pose_data[self._data_ind] = x[:3]
-            if self._data_ind >= len(self._pose_data)-1:
-                self._data_ind = 0
+            self._pose_data[self._data_idx] = x[:3]
+            if self._data_idx >= len(self._pose_data)-1:
+                self._data_idx = 0
             else:
-                self._data_ind += 1
+                self._data_idx += 1
 
 
     def _update_time(self) -> None:
@@ -258,16 +258,17 @@ class MinimalSim():
         while self._run_flag.value:
             x = np.array(self._x[:])
             xset = np.array(self._x_set[:])
+            d = np.array(self._d[:])
 
             timer = self._verbose.value
             u = self._controller.get_input(x=x, xset=xset, timer=timer)
-            x = self._plant.update(x=x, u=u, timer=self._verbose.value)
-            self._x[:] = x + np.array(self._prev_dstb[:]) #+ np.array(self._dstb[:])
+            x = self._plant.update(x=x, u=u, d=d, timer=self._verbose.value)
+            self._x[:] = x #+ np.array(self._prev_dstb[:]) #+ np.array(self._d[:])
 
             if self._verbose.value:
                 print(f"\nu: {u}")
                 print(f"x: {x}")
-                print(f"state disturbance: {self._dstb[:]}\n")
+                print(f"dynamic disturbance: {self._d[:]}\n")
             self._check_steps()
 
 
