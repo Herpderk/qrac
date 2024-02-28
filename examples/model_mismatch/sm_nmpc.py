@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from qrac.dynamics import Crazyflie, Quadrotor, ParamAffineQuadrotor
+from qrac.dynamics import Crazyflie, Quadrotor, ParameterAffineQuadrotor
 from qrac.trajectory import Circle
 from qrac.control.sm_nmpc import SetMembershipMPC
 from qrac.sim.acados_plant import AcadosPlant
@@ -33,14 +33,12 @@ def main():
     # initialize mpc
     Q = np.diag([40,40,40, 10,10,10, 20,20,20, 10,10,10])
     R = np.diag([0, 0, 0, 0])
-    update_gain = 100
-    param_min = np.array([
-        0, 0, 0, 0,
-        0, 0, 0,
-        -5, -5, 0
-    ])
-    param_max = 2 * ParamAffineQuadrotor(model_acc).get_parameters()
-    disturb_max = 0.01*np.ones(12)
+    update_gain = 200
+    param_min = ParameterAffineQuadrotor(model_acc).get_parameters()\
+        - 2*np.abs(ParameterAffineQuadrotor(model_acc).get_parameters())
+    param_max = ParameterAffineQuadrotor(model_acc).get_parameters()\
+        + 2*np.abs(ParameterAffineQuadrotor(model_acc).get_parameters())
+    disturb_max = 0.001*np.ones(12)
     disturb_min = -disturb_max
     u_max = u_max_true #model_inacc.u_max
     u_min = u_min_true
@@ -88,12 +86,14 @@ def main():
     
     print("inacc params:")
     print(
-        ParamAffineQuadrotor(model_inacc).get_parameters()
+        ParameterAffineQuadrotor(model_inacc).get_parameters()
     )
     print("acc params:")
     print(  
-        ParamAffineQuadrotor(model_acc).get_parameters()
+        ParameterAffineQuadrotor(model_acc).get_parameters()
     )
+    print(param_min)
+    print(param_max)
 
 
 if __name__=="__main__":
