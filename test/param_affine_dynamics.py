@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from qrac.dynamics import Crazyflie, ParamAffineQuadrotor
+from qrac.dynamics import Crazyflie, ParameterAffineQuadrotor
 from qrac.control.nmpc import NMPC
 import casadi as cs
 import numpy as np
@@ -28,7 +28,7 @@ def main():
 
     # Let's confirm that the same sequence of control inputs will yield
     # the same trajectory in the augmented dynamics
-    model = ParamAffineQuadrotor(model)
+    model = ParameterAffineQuadrotor(model)
     param = np.array([
         1/model.m , 0, 0, 0,
         1/model.Ixx, 1/model.Iyy, 1/model.Izz,
