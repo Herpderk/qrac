@@ -19,7 +19,7 @@ from typing import List, Tuple
 import atexit
 import shutil
 import os
-from qrac.dynamics import Quadrotor, ParamAffineQuadrotor
+from qrac.dynamics import Quadrotor, ParameterAffineQuadrotor
 
 
 class NMPC:
@@ -75,7 +75,7 @@ class NMPC:
         Get the first control input from the optimization.
         """
         self._solve(x, xset, timer)
-        nxt_ctrl = self._solver.get(0, "u")
+        nxt_ctrl = np.array(self._solver.get(0, "u"))
         return nxt_ctrl
 
 
@@ -89,7 +89,7 @@ class NMPC:
         Get the next state from the optimization.
         """
         self._solve(x, xset, timer)
-        nxt_state = self._solver.get(1, "x")
+        nxt_state = np.array(self._solver.get(1, "x"))
         return nxt_state
 
 
@@ -318,7 +318,7 @@ class NMPC:
         real_time: bool,
     ) -> None:
         if type(model) != Quadrotor:
-            if type(model) != ParamAffineQuadrotor:
+            if type(model) != ParameterAffineQuadrotor:
                 raise TypeError(
                     "The inputted model must be of type 'Quadrotor'!")
         if type(Q) != np.ndarray:
