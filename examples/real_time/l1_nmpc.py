@@ -16,9 +16,9 @@ def main():
 
     # true plant model
     m_true = 1.5 * model_inacc.m
-    Ixx_true = 60 * model_inacc.Ixx
-    Iyy_true = 60 * model_inacc.Iyy
-    Izz_true = 60 * model_inacc.Izz
+    Ixx_true = 50 * model_inacc.Ixx
+    Iyy_true = 50 * model_inacc.Iyy
+    Izz_true = 50 * model_inacc.Izz
     Ax_true = 0
     Ay_true = 0
     Az_true = 0
@@ -32,7 +32,7 @@ def main():
         Ax_true, Ay_true, Az_true, xB_true, yB_true, k_true, u_min_true, u_max_true)
 
     # initialize mpc
-    Q = np.diag([1,1,1, 4,4,4, 1,1,1, 4,4,4])
+    Q = np.diag([1,1,1, 2,2,2, 1,1,1, 2,2,2])
     R = np.diag([0, 0, 0, 0])
     u_min = model_inacc.u_min
     u_max = model_inacc.u_max
