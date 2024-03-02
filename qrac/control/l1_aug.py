@@ -54,17 +54,28 @@ class L1Augmentation():
         self._u_ref = mp.Array("f", np.zeros(model.nu))
         self._timer = mp.Value("b", False)
         if real_time:
-            self._run_flag = mp.Value("b", False)
+            self._run_flag = mp.Value("b", True)
 
 
     @property
     def dt(self) -> float:
         return self._dt
-    
-    
+
+
     @property
     def n_set(self) -> Tuple[int]:
         return self._ctrl_ref.n_set
+
+
+    def start(self) -> None:
+        if self._rt:
+            proc = mp.Process(target=self._ctrl_ref_proc, args=[])
+            proc.start()
+            
+
+    def stop(self) -> None:
+        if self._rt:
+            self._run_flag.value = False
 
 
     def get_input(
@@ -78,18 +89,27 @@ class L1Augmentation():
         self._timer.value = timer
         self._x[:] = x
         self._xset[:] = xset
-        if self._rt:
-            self._update_rt()
-        else:
+        if not self._rt:
             self._update_non_rt()
         self._run_l1()
         u = np.array(self._u_ref[:]) + self._u_l1
         return u
 
 
-    def _update_rt(self) -> None:
-        if self._run_flag.value:
-            self._run_flag.value = True
+    def _ctrl_ref_proc(self) -> None:
+        ctrl_ref_proc = mp.Process(target=self._run_ctrl_ref, args=[])
+        ctrl_ref_proc.start()
+        ctrl_ref_proc.join()
+        print("\nController successfully stopped.")
+
+
+    def _run_ctrl_ref(self) -> None:
+        st = time.perf_counter()
+        while self._run_flag.value:
+            et = time.perf_counter()
+            if et - st >= self._ctrl_ref.dt:
+                st = et
+                self._update_ctrl_ref()
 
 
     def _update_non_rt(self) -> None:
@@ -99,17 +119,13 @@ class L1Augmentation():
         self._loop_ct += 1
 
 
-    def _run_ctrl_ref(self) -> None:
-        while True:
-            if self._run_flag:
-                self._update_ctrl_ref()
-
-
     def _update_ctrl_ref(self) -> np.ndarray:
         x = np.array(self._x[:])
         xset = np.array(self._xset[:])
         timer = self._timer.value
-        self._u_ref[:] = self._ctrl_ref.get_input(x=x, xset=xset, timer=timer)
+        self._u_ref[:] = self._ctrl_ref.get_input(
+            x=x, xset=xset, timer=timer
+        )
 
 
     def _run_l1(self) -> None:

@@ -17,6 +17,7 @@ class MinimalSim():
         ub_pose: np.ndarray,
         data_len=400,
         sprite_size=1.0,
+        real_time=False
     ) -> None:
         self._assert(
             plant, controller, lb_pose, ub_pose, data_len, sprite_size,)
@@ -31,13 +32,14 @@ class MinimalSim():
         self._p2 = np.array([-sprite_size / 2, 0, 0, 1])
         self._p3 = np.array([0, sprite_size / 2, 0, 1])
         self._p4 = np.array([0, -sprite_size / 2, 0, 1])
+        self._rt = real_time
 
         self._run_flag = mp.Value("b", False)
         self._verbose = mp.Value("b", False)
         self._pose_data = np.zeros((data_len, 3))
         self._data_idx = 0
         self._x = mp.Array("f", np.zeros(plant.nx))
-        self._x_set = mp.Array("f", np.zeros(controller.n_set))
+        self._xset = mp.Array("f", np.zeros(controller.n_set))
         self._d = mp.Array("f", np.zeros(plant.nd))
         #self._prev_dstb = mp.Array("f", np.zeros(plant.nx))
         self._max_steps = mp.Value("i", -1)
@@ -85,11 +87,11 @@ class MinimalSim():
 
     def update_setpoint(
         self,
-        x_set: np.ndarray,
+        xset: np.ndarray,
     ) -> None:
-        assert x_set.shape[0] == self._controller.n_set
+        assert xset.shape[0] == self._controller.n_set
         try:
-            self._x_set[:] = x_set
+            self._xset[:] = xset
         except AttributeError:
             raise RuntimeError(
                 "You cannot assign a setpoint before the sim starts.")
@@ -119,7 +121,7 @@ class MinimalSim():
         self._pose_data = np.zeros((self._data_len, 3))
         self._data_idx = 0
         self._x[:] = x0
-        self._x_set[:] = np.tile(x0, int(self._controller.n_set/x0.shape[0]))
+        self._xset[:] = np.tile(x0, int(self._controller.n_set/x0.shape[0]))
         self._d[:] = np.zeros(self._plant.nd)
         self._max_steps.value = max_steps
         self._steps.value = 0
@@ -255,21 +257,32 @@ class MinimalSim():
 
 
     def _run_backend(self) -> None:
+        st = time.perf_counter()
         while self._run_flag.value:
-            x = np.array(self._x[:])
-            xset = np.array(self._x_set[:])
-            d = np.array(self._d[:])
+            if self._rt:
+                et = time.perf_counter()
+                if et - st >= self._controller.dt:
+                    st = et
+                    self._update_backend()
+            else:
+                self._update_backend()
 
-            timer = self._verbose.value
-            u = self._controller.get_input(x=x, xset=xset, timer=timer)
-            x = self._plant.update(x=x, u=u, d=d, timer=self._verbose.value)
-            self._x[:] = x #+ np.array(self._prev_dstb[:]) #+ np.array(self._d[:])
 
-            if self._verbose.value:
-                print(f"\nu: {u}")
-                print(f"x: {x}")
-                print(f"dynamic disturbance: {self._d[:]}\n")
-            self._check_steps()
+    def _update_backend(self) -> None:
+        x = np.array(self._x[:])
+        xset = np.array(self._xset[:])
+        d = np.array(self._d[:])
+
+        timer = self._verbose.value
+        u = self._controller.get_input(x=x, xset=xset, timer=timer)
+        x = self._plant.update(x=x, u=u, d=d, timer=self._verbose.value)
+        self._x[:] = x #+ np.array(self._prev_dstb[:]) #+ np.array(self._d[:])
+
+        if self._verbose.value:
+            print(f"\nu: {u}")
+            print(f"x: {x}")
+            print(f"dynamic disturbance: {self._d[:]}\n")
+        self._check_steps()
 
 
     def _check_steps(self):

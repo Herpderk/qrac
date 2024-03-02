@@ -37,7 +37,6 @@ class NMPC:
         time_step: float,
         num_nodes: int,
         rti: bool,
-        real_time: bool,
     ) -> None:
         """
         Initialize the MPC with dynamics from casadi variables,
@@ -46,11 +45,10 @@ class NMPC:
         """
         self._nx = model.nx
         self._nu = model.nu
-        self._assert(model, Q, R, u_max, u_min, time_step, num_nodes, real_time)
+        self._assert(model, Q, R, u_max, u_min, time_step, num_nodes,)
         self._u_min = u_min
         self._dt = time_step
         self._N = num_nodes
-        self._rt = real_time
         self._solver = self._init_solver(model, Q, R, u_max, u_min, rti)
         # deleting acados compiled files when script is terminated.
         atexit.register(self._clear_files)
@@ -144,9 +142,6 @@ class NMPC:
 
         if timer:
             print(f"mpc runtime: {time.perf_counter() - st}")
-        if self._rt:
-            while time.perf_counter() - st < self._dt:
-                pass
 
 
     def _init_solver(
@@ -218,12 +213,12 @@ class NMPC:
 
         # partial condensing HPIPM is fastest:
         # https://cdn.syscop.de/publications/Frison2020a.pdf
-        ocp.solver_options.hpipm_mode = "BALANCE"
+        ocp.solver_options.hpipm_mode = "SPEED_ABS"
         ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
-        ocp.solver_options.qp_solver_iter_max = 5
+        ocp.solver_options.qp_solver_iter_max = 3
         ocp.solver_options.qp_solver_warm_start = 1
-        ocp.solver_options.nlp_solver_max_iter = 10
-        ocp.solver_options.nlp_solver_tol_stat = 10**-4
+        ocp.solver_options.nlp_solver_max_iter = 1
+        ocp.solver_options.nlp_solver_tol_stat = 10**-3
         ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
         ocp.solver_options.integrator_type = "ERK"
         ocp.solver_options.print_level = 0
@@ -321,7 +316,6 @@ class NMPC:
         u_min: np.ndarray,
         time_step: float,
         num_nodes: int,
-        real_time: bool,
     ) -> None:
         if type(model) != Quadrotor:
             if type(model) != ParameterAffineQuadrotor:
@@ -348,9 +342,6 @@ class NMPC:
         if type(num_nodes) != int:
             raise ValueError(
                 "Please input the number of shooting nodes as an integer!")
-        if type(real_time) != bool:
-            raise ValueError(
-                "Please input the real-time mode as a bool!")
 
 
     def _clear_files(self) -> None:

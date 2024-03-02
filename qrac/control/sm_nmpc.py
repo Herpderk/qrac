@@ -2,6 +2,7 @@
 
 import casadi as cs
 import numpy as np
+import multiprocessing as mp
 import qpsolvers
 from scipy.linalg import block_diag
 from typing import Tuple
@@ -25,13 +26,14 @@ class SetMembershipMPC():
         u_max: np.ndarray,
         u_min: np.ndarray,
         time_step: float,
+        param_time_step: float,
         num_nodes: int,
         rti: bool,
         real_time: bool,
     ) -> None:
         self._nx = model.nx
         self._nu = model.nu
-        self._dt = time_step
+        self._dt = param_time_step
         self._N = num_nodes
         self._rt = real_time
 
@@ -41,34 +43,50 @@ class SetMembershipMPC():
         self._d_max = disturb_max*time_step
         self._mu = update_gain
 
-        self._lp_max_iter = 20
-        self._proj_max_iter = 20
+        self._lp_max_iter = 5
+        self._proj_max_iter = 10
         model_aug = ParameterAffineQuadrotor(model)
-        self._param_est = ParameterEstimator(model_aug, self._nx, self._dt,)
+        self._param_est = ParameterEstimator(
+            model_aug, self._nx, param_time_step,)
 
         Q_aug = self._augment_costs(Q)
         self._mpc = NMPC(
             model_aug, Q_aug, R, u_min, u_max,
-            time_step, num_nodes, rti, real_time
+            time_step, num_nodes, rti,
         )
 
         self._tol = param_tol
-        self._param_min = param_min
-        self._param_max = param_max
-        self._param = model_aug.get_parameters()
-        self._x = np.zeros(self._nx)
-        self._u = np.zeros(self._nu)
+        self._param_min = mp.Array("f", param_min)
+        self._param_max = mp.Array("f", param_max)
+        self._param = mp.Array("f", model_aug.get_parameters())
+        self._x = mp.Array("f", np.zeros(model.nx))
+        self._xprev = mp.Array("f", np.zeros(self._nx))
+        self._uprev = mp.Array("f", np.zeros(self._nu))
+        self._timer = mp.Value("b", False)
         self._start = False
+        if real_time:
+            self._run_flag = mp.Value("b", True)
 
 
     @property
     def dt(self) -> float:
-        return self._dt
+        return self._mpc.dt
 
 
     @property
     def n_set(self) -> int:
         return self._N * self._nx
+
+
+    def start(self) -> None:
+        if self._rt:
+            proc = mp.Process(target=self._param_proc, args=[])
+            proc.start()
+            
+
+    def stop(self) -> None:
+        if self._rt:
+            self._run_flag.value = False
 
 
     def get_input(
@@ -77,39 +95,17 @@ class SetMembershipMPC():
         xset: np.ndarray,
         timer=False,
     ) -> np.ndarray:
-        param = self._get_param(x, timer)
-        x_aug = np.concatenate((x, param))
+        self._xprev[:] = self._x[:]
+        self._x[:] = x
+        self._timer.value = timer
+
+        if not self._rt:
+            self._update_param()
+
+        x_aug = np.concatenate((x, self._np(self._param)))
         xset_aug = self._augment_xset(xset)
-        self._x = x[:self._nx]
-        self._u = self._mpc.get_input(x_aug, xset_aug, timer)
-        return self._u
-
-
-    def get_state(
-        self,
-        x: np.ndarray,
-        xset: np.ndarray,
-        timer=False,
-    ) -> np.ndarray:
-        param = self._get_param(x, timer)
-        x_aug = np.concatenate((x, param))
-        xset_aug = self._augment_xset(xset)
-        x1 = self._mpc.get_state(x_aug, xset_aug, timer)
-        return x1
-
-
-    def get_trajectory(
-        self,
-        x: np.ndarray,
-        xset: np.ndarray,
-        timer=False,
-        visuals=False
-    ) -> Tuple[np.ndarray]:
-        param = self._get_param(x, timer)
-        x_aug = np.concatenate((x, param))
-        xset_aug = self._augment_xset(xset)
-        xs, us = self._mpc.get_trajectory(x_aug, xset_aug, timer, visuals)
-        return xs, us
+        self._uprev[:] = self._mpc.get_input(x_aug, xset_aug, timer)
+        return self._np(self._uprev)
 
 
     def _augment_xset(
@@ -125,76 +121,106 @@ class SetMembershipMPC():
         return xset_aug
 
 
-    def _get_param(
+    def _np(
         self,
-        x: np.ndarray,
-        timer: bool
+        arr_like
     ) -> np.ndarray:
+        return np.array(arr_like[:])
+
+
+    def _param_proc(self) -> None:
+        param_proc = mp.Process(target=self._run_param_updates)
+        param_proc.start()
+        param_proc.join()
+        print("\nController successfully stopped.")
+
+
+    def _run_param_updates(self) -> None:
         st = time.perf_counter()
+        while self._run_flag.value:
+            et = time.perf_counter()
+            if et - st >= self._dt:
+                st = et
+                self._update_param()
+
+
+    def _update_param(
+        self,
+    ) -> None:
+        st = time.perf_counter()
+        param = self._np(self._param)
+        x = self._np(self._x)
+        xprev = self._np(self._xprev)
+        uprev = self._np(self._uprev)
+        timer = self._timer.value
+
         param = self._param_est.lms_update(
-            x=x, xprev=self._x, uprev=self._u,
-            param=self._param, mu=self._mu
+            x=x, xprev=xprev, uprev=uprev,
+            param=param, mu=self._mu
         )
-        param_min, param_max = self._sm_update(x)
+        param_min, param_max = self._sm_update(x, xprev, uprev)
         param_proj = self._param_est.solve_proj(
             param=param, param_min=param_min, param_max=param_max,
             max_iter=self._proj_max_iter
         )
-        self._update_vars(param_proj, param_min, param_max)
+        self._update_param_vars(param_proj, param_min, param_max)
         print(f"params: {param_proj}")
         if timer:
-            print(f"set-membership and lms runtime: {time.perf_counter() - st}")
-        return param_proj
+            print(f"sm and lms runtime: {time.perf_counter() - st}")
 
 
-    def _sm_update(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def _sm_update(
+        self,
+        x: np.ndarray,
+        xprev: np.ndarray,
+        uprev: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray]:
         if self._start == False:
             self._start = True
-            self._x = x
-        
-        if not (self._param_max - self._param_min < self._tol).all():
+            xprev = x
+
+        param_min = self._np(self._param_min)
+        param_max = self._np(self._param_max)
+        if not (param_max - param_min < self._tol).all():
             sol_min = np.zeros(self._nparam)
             sol_max = np.zeros(self._nparam)
         
             for i in range(self._nparam):
-                if self._param_max[i] - self._param_min[i] > self._tol[i]:
+                if param_max[i] - param_min[i] > self._tol[i]:
                     sol_min[i] = self._param_est.solve_lp(
-                        idx=i, x=x, xprev=self._x, uprev=self._u,
+                        idx=i, x=x, xprev=xprev, uprev=uprev,
                         d_min=self._d_min, d_max=self._d_max,
-                        param_min=self._param_min, param_max=self._param_max,
+                        param_min=param_min, param_max=param_max,
                         max_iter=self._lp_max_iter, max=False
                     )
                     sol_max[i] = self._param_est.solve_lp(
-                        idx=i, x=x, xprev=self._x, uprev=self._u,
+                        idx=i, x=x, xprev=xprev, uprev=uprev,
                         d_min=self._d_min, d_max=self._d_max,
-                        param_min=self._param_min, param_max=self._param_max,
+                        param_min=param_min, param_max=param_max,
                         max_iter=self._lp_max_iter, max=True
                     )
                 else:
-                    sol_min[i] = self._param_min[i]
-                    sol_max[i] = self._param_max[i]
+                    sol_min[i] = param_min[i]
+                    sol_max[i] = param_max[i]
             
             param_min = np.maximum(
-                sol_min, self._param_min
+                sol_min, param_min
             )
             param_max = np.minimum(
-                sol_max, self._param_max
+                sol_max, param_max
             )
-        else:
-            param_min = self._param_min
-            param_max = self._param_max
         return param_min, param_max
 
 
-    def _update_vars(
+    def _update_param_vars(
         self,
         param,
         param_min,
         param_max
     ) -> None:
-        self._param = param
-        self._param_min = param_min
-        self._param_max = param_max
+        self._param[:] = param
+        self._param_min[:] = param_min
+        self._param_max[:] = param_max
 
 
     def _augment_costs(
