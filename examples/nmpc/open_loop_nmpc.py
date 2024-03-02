@@ -16,10 +16,10 @@ def main():
     u_max = model.u_max
     control_T = 0.05
     num_nodes = 200
-    rt = False
+    rti = False
     mpc = NMPC(
         model=model, Q=Q, R=R, u_min=u_min, u_max=u_max,  \
-        time_step=control_T, num_nodes=num_nodes, real_time=rt,)
+        time_step=control_T, num_nodes=num_nodes, rti=rti,)
 
     # run a single control loop with trajectory prediction
     x0 = np.zeros(12)

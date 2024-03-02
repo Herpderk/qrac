@@ -13,10 +13,10 @@ def main():
     model_inacc = Crazyflie(Ax=0, Ay=0, Az=0)
 
     # true plant model
-    m_true = 1.8 * model_inacc.m
-    Ixx_true = 20 * model_inacc.Ixx
-    Iyy_true = 20 * model_inacc.Iyy
-    Izz_true = 20 * model_inacc.Izz
+    m_true = 1.5 * model_inacc.m
+    Ixx_true = 40 * model_inacc.Ixx
+    Iyy_true = 40 * model_inacc.Iyy
+    Izz_true = 40 * model_inacc.Izz
     Ax_true = 0
     Ay_true = 0
     Az_true = 0
@@ -32,17 +32,18 @@ def main():
     # initialize mpc
     Q = np.diag([40,40,40, 10,10,10, 20,20,20, 10,10,10])
     R = np.diag([0, 0, 0, 0])
-    u_max = u_max_true #model_inacc.u_max
-    u_min = np.zeros(4)
-    mpc_T = 0.02
-    num_nodes = 50
-    rt = False
+    u_min = model_inacc.u_min
+    u_max = model_inacc.u_max
+    mpc_T = 0.006
+    num_nodes = 100
+    rti = True
+    real_time = False
     mpc = NMPC(
         model=model_inacc, Q=Q, R=R, u_max=u_max, u_min=u_min,
-        time_step=mpc_T, num_nodes=num_nodes, real_time=rt,)
+        time_step=mpc_T, num_nodes=num_nodes, rti=rti,)
 
     # initialize simulator plant
-    sim_T = mpc_T / 10
+    sim_T = mpc_T / 20
     plant = AcadosPlant(
         model=model_acc, sim_step=sim_T, control_step=mpc_T)
 
@@ -61,17 +62,17 @@ def main():
     sim.start(x0=x0, max_steps=N, verbose=True)
 
     # track the given trajectory
-    x_set = np.zeros(mpc.n_set)
+    xset = np.zeros(mpc.n_set)
     nx = model_inacc.nx
     dt = mpc.dt
     t0 = sim.timestamp
     while sim.is_alive:
         t = sim.timestamp
         for k in range(num_nodes):
-            x_set[k*nx : k*nx + nx] = \
+            xset[k*nx : k*nx + nx] = \
                 np.array(traj.get_setpoint(t - t0))
             t += dt
-        sim.update_setpoint(x_set=x_set)
+        sim.update_setpoint(xset=xset)
 
 
 if __name__=="__main__":

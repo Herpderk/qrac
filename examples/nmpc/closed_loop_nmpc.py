@@ -17,12 +17,12 @@ def main():
     R = np.diag([0, 0, 0, 0])
     u_max = model.u_max
     u_min = np.zeros(4)
-    mpc_T = 0.02
-    num_nodes = 50
-    rt = False
+    mpc_T = 0.006
+    num_nodes = 100
+    rti = True
     mpc = NMPC(
         model=model, Q=Q, R=R, u_max=u_max, u_min=u_min, \
-        time_step=mpc_T, num_nodes=num_nodes, real_time=rt,)
+        time_step=mpc_T, num_nodes=num_nodes, rti=rti, )
 
     # initialize simulator plant
     sim_T = mpc_T / 10
@@ -45,17 +45,17 @@ def main():
     sim.start(x0=x0, max_steps=N, verbose=True)
 
     # track the given trajectory
-    x_set = np.zeros(mpc.n_set)
+    xset = np.zeros(mpc.n_set)
     nx = model.nx
     dt = mpc.dt
     t0 = sim.timestamp
     while sim.is_alive:
         t = sim.timestamp
         for k in range(num_nodes):
-            x_set[k*nx : k*nx + nx] = \
+            xset[k*nx : k*nx + nx] = \
                 np.array(traj.get_setpoint(t - t0))
             t += dt
-        sim.update_setpoint(x_set=x_set)
+        sim.update_setpoint(xset=xset)
 
 
 if __name__=="__main__":
