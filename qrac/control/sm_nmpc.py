@@ -3,7 +3,7 @@
 import casadi as cs
 import numpy as np
 import multiprocessing as mp
-import qpsolvers
+from qpsolvers.solvers.proxqp_ import proxqp_solve_qp
 from scipy.linalg import block_diag
 from typing import Tuple
 import time
@@ -302,7 +302,7 @@ class ParameterEstimator():
             [x-Fd-d_min, -x+Fd+d_max]
         )
 
-        param_bd = qpsolvers.solvers.proxqp_.proxqp_solve_qp(
+        param_bd = proxqp_solve_qp(
             P=P, q=q, G=G, h=h, lb=param_min, ub=param_max,
             verbose=False, backend="dense", eps_abs=10**-3, max_iter=max_iter,
         )
@@ -326,7 +326,7 @@ class ParameterEstimator():
         q = np.zeros(self._nparam)
         lb = param_min-param
         ub = param_max-param
-        param_err = qpsolvers.solvers.proxqp_.proxqp_solve_qp(
+        param_err = proxqp_solve_qp(
             P=P, q=q, lb=lb, ub=ub,
             verbose=False, backend="dense", eps_abs=10**-3, max_iter=max_iter,
         )
