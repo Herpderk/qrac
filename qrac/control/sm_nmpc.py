@@ -248,8 +248,8 @@ class ParameterEstimator():
         nx: int,
         dt: float
     ):
-        Fd = model.x[:nx] + dt*model.F[:nx]
-        Gd = dt*model.G[:nx,:self._nparam]
+        Fd = model.x[:nx] + dt*model.F
+        Gd = dt*model.G
         Fd_func = cs.Function("Fd_func", [model.x[:nx], model.u], [Fd])
         Gd_func = cs.Function("Gd_func", [model.x[:nx], model.u], [Gd])
         Gd_T_func = cs.Function("Gd_T_func", [model.x[:nx], model.u], [Gd.T])

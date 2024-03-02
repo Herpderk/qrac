@@ -204,7 +204,6 @@ class ParameterAffineQuadrotor(Quadrotor):
             cs.inv(self.W) @ cs.vertcat(p,q,r),
             self.g,
             cs.SX.zeros(3),
-            cs.SX.zeros(10)
         ))
         self.G = cs.SX(cs.vertcat(
             cs.SX.zeros(6, 10),
@@ -218,11 +217,17 @@ class ParameterAffineQuadrotor(Quadrotor):
                 cs.diag(self.B @ self.u),
                 -cs.diag(cs.vertcat(q*r, p*r, p*q))
             ),
-            cs.SX.zeros(10, 10)
+        ))
+
+        F_aug = cs.SX(cs.vertcat(
+            self.F, cs.SX.zeros(10)
+        ))
+        G_aug = cs.SX(cs.vertcat(
+            self.G, cs.SX.zeros(10,10)
         ))
 
         self.x = x_aug
-        self.xdot = self.F + self.G @ param
+        self.xdot = F_aug + G_aug @ param
         self.nx, self.nu = self.get_dims()
 
 
