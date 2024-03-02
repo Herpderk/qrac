@@ -43,11 +43,11 @@ class SetMembershipMPC():
         self._d_max = disturb_max*time_step
         self._mu = update_gain
 
-        self._lp_max_iter = 5
+        self._lp_max_iter = 10
         self._proj_max_iter = 10
         model_aug = ParameterAffineQuadrotor(model)
         self._param_est = ParameterEstimator(
-            model_aug, self._nx, param_time_step,)
+            model_aug, self._nx, time_step,)
 
         Q_aug = self._augment_costs(Q)
         self._mpc = NMPC(

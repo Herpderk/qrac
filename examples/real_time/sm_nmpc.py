@@ -31,7 +31,7 @@ def main():
         k_true, u_min_true, u_max_true)
 
     # initialize mpc
-    update_gain = 100
+    update_gain = 1000
     param_tol = 0.2*np.ones(10)
     param_min = ParameterAffineQuadrotor(model_acc).get_parameters()\
         - np.abs(ParameterAffineQuadrotor(model_acc).get_parameters())
@@ -45,7 +45,7 @@ def main():
     u_min = model_inacc.u_min
     u_max = model_inacc.u_max
     mpc_T = 0.005
-    param_T = 0.005
+    param_T = 0.002
     num_nodes = 75
     rti = True
     real_time = True
@@ -75,7 +75,7 @@ def main():
 
     # Run the sim for N control loops
     x0 = np.array([8,0,0, 0,0,0, 0,0,0, 0,0,0])
-    N = int(round(30 / mpc_T))      # 30 seconds worth of control loops
+    N = int(round(10 / mpc_T))      # 30 seconds worth of control loops
     sim.start(x0=x0, max_steps=N, verbose=True)
 
     # track the given trajectory
