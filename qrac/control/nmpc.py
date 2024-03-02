@@ -36,6 +36,7 @@ class NMPC:
         u_max: np.ndarray,
         time_step: float,
         num_nodes: int,
+        rti: bool,
         real_time: bool,
     ) -> None:
         """
@@ -50,7 +51,7 @@ class NMPC:
         self._dt = time_step
         self._N = num_nodes
         self._rt = real_time
-        self._solver = self._init_solver(model, Q, R, u_max, u_min)
+        self._solver = self._init_solver(model, Q, R, u_max, u_min, rti)
         # deleting acados compiled files when script is terminated.
         atexit.register(self._clear_files)
 
@@ -134,13 +135,13 @@ class NMPC:
 
         # the reference input will be the hover input
         for k in range(self._N):
-            y_ref = np.concatenate(
+            yref = np.concatenate(
                 (xset[k*self._nx : k*self._nx + self._nx], self._u_min))
-            self._solver.set(k, "yref", y_ref)
-
-        # solve for the next ctrl input
+            self._solver.set(k, "yref", yref)
+        
         self._solver.solve()
         #self._solver.print_statistics()
+
         if timer:
             print(f"mpc runtime: {time.perf_counter() - st}")
         if self._rt:
@@ -155,6 +156,7 @@ class NMPC:
         R: np.ndarray,
         u_max: np.ndarray,
         u_min: np.ndarray,
+        rti: bool,
     ) -> AcadosOcpSolver:
         """
         Guide to acados OCP formulation:
@@ -168,7 +170,7 @@ class NMPC:
         ocp.dims.nx = self._nx
         ocp.dims.nu = self._nu
         ocp.dims.ny = ny
-        ocp.dims.nbx = 1 # number of states being constrained
+        ocp.dims.nbx = 4 # number of states being constrained
         ocp.dims.nbx_0 = ocp.dims.nx
         ocp.dims.nbx_e = ocp.dims.nbx
         ocp.dims.nbu = self._nu
@@ -196,19 +198,19 @@ class NMPC:
         ocp.constraints.x0 = np.zeros(self._nx)
 
         # control input constraints (square of motor freq)
+        ocp.constraints.idxbu = np.arange(self._nu)
         ocp.constraints.lbu = u_min
         ocp.constraints.ubu = u_max
-        ocp.constraints.idxbu = np.arange(self._nu)
 
         # state constraints: yaw
+        ocp.constraints.idxbx = np.array(
+            [2, 3, 4, 5,]
+        )
         ocp.constraints.lbx = np.array(
-            [0,]
+            [0, -np.pi/2, -np.pi/2, 0,]
         )
         ocp.constraints.ubx = np.array(
-            [2*np.pi,]
-        )
-        ocp.constraints.idxbx = np.array(
-            [5,]
+            [10**10, np.pi/2, np.pi/2, 2*np.pi,]
         )
         ocp.constraints.idxbx_e = ocp.constraints.idxbx
         ocp.constraints.lbx_e = ocp.constraints.lbx
@@ -218,17 +220,21 @@ class NMPC:
         # https://cdn.syscop.de/publications/Frison2020a.pdf
         ocp.solver_options.hpipm_mode = "BALANCE"
         ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
-        ocp.solver_options.qp_solver_iter_max = 10
+        ocp.solver_options.qp_solver_iter_max = 5
         ocp.solver_options.qp_solver_warm_start = 1
-        ocp.solver_options.nlp_solver_type = "SQP"
         ocp.solver_options.nlp_solver_max_iter = 10
         ocp.solver_options.nlp_solver_tol_stat = 10**-4
         ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
         ocp.solver_options.integrator_type = "ERK"
         ocp.solver_options.print_level = 0
-
-        # compile acados ocp
-        solver = AcadosOcpSolver(ocp)
+        
+        if rti:
+            ocp.solver_options.nlp_solver_type = "SQP_RTI"
+            solver = AcadosOcpSolver(ocp)
+            solver.options_set("rti_phase", 0)
+        else:
+            ocp.solver_options.nlp_solver_type = "SQP"
+            solver = AcadosOcpSolver(ocp)
         return solver
 
 
