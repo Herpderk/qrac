@@ -41,7 +41,6 @@ class MinimalSim():
         self._x = mp.Array("f", np.zeros(plant.nx))
         self._xset = mp.Array("f", np.zeros(controller.n_set))
         self._d = mp.Array("f", np.zeros(plant.nd))
-        #self._prev_dstb = mp.Array("f", np.zeros(plant.nx))
         self._max_steps = mp.Value("i", -1)
         self._steps = mp.Value("i", 0)
         self._sim_time = mp.Value("f", 0.0)
@@ -276,7 +275,7 @@ class MinimalSim():
         timer = self._verbose.value
         u = self._controller.get_input(x=x, xset=xset, timer=timer)
         x = self._plant.update(x=x, u=u, d=d, timer=self._verbose.value)
-        self._x[:] = x #+ np.array(self._prev_dstb[:]) #+ np.array(self._d[:])
+        self._x[:] = x
 
         if self._verbose.value:
             print(f"\nu: {u}")
