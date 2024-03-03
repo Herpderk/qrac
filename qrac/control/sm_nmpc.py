@@ -45,6 +45,7 @@ class SetMembershipMPC():
 
         self._lp_max_iter = 10
         self._proj_max_iter = 10
+        self._solver_tol = 10**-6
         model_aug = ParameterAffineQuadrotor(model)
         self._param_est = ParameterEstimator(
             model_aug, self._nx, time_step,)
@@ -98,9 +99,7 @@ class SetMembershipMPC():
         self._xprev[:] = self._x[:]
         self._x[:] = x
         self._timer.value = timer
-
-        if not self._rt:
-            self._update_param()
+        if not self._rt: self._update_param()
 
         x_aug = np.concatenate((x, self._np(self._param)))
         xset_aug = self._augment_xset(xset)
@@ -144,9 +143,7 @@ class SetMembershipMPC():
                 self._update_param()
 
 
-    def _update_param(
-        self,
-    ) -> None:
+    def _update_param(self) -> None:
         st = time.perf_counter()
         param = self._np(self._param)
         x = self._np(self._x)
@@ -161,9 +158,10 @@ class SetMembershipMPC():
         param_min, param_max = self._sm_update(x, xprev, uprev)
         param_proj = self._param_est.solve_proj(
             param=param, param_min=param_min, param_max=param_max,
-            max_iter=self._proj_max_iter
+            tol=self._solver_tol, max_iter=self._proj_max_iter
         )
         self._update_param_vars(param_proj, param_min, param_max)
+
         print(f"params: {param_proj}")
         if timer:
             print(f"sm and lms runtime: {time.perf_counter() - st}")
@@ -191,32 +189,30 @@ class SetMembershipMPC():
                         idx=i, x=x, xprev=xprev, uprev=uprev,
                         d_min=self._d_min, d_max=self._d_max,
                         param_min=param_min, param_max=param_max,
-                        max_iter=self._lp_max_iter, max=False
+                        tol=self._solver_tol, max_iter=self._lp_max_iter,
+                        max=False
                     )
                     sol_max[i] = self._param_est.solve_lp(
                         idx=i, x=x, xprev=xprev, uprev=uprev,
                         d_min=self._d_min, d_max=self._d_max,
                         param_min=param_min, param_max=param_max,
-                        max_iter=self._lp_max_iter, max=True
+                        tol=self._solver_tol, max_iter=self._lp_max_iter,
+                        max=True
                     )
                 else:
                     sol_min[i] = param_min[i]
                     sol_max[i] = param_max[i]
             
-            param_min = np.maximum(
-                sol_min, param_min
-            )
-            param_max = np.minimum(
-                sol_max, param_max
-            )
+            param_min = np.maximum(sol_min, param_min)
+            param_max = np.minimum(sol_max, param_max)
         return param_min, param_max
 
 
     def _update_param_vars(
         self,
-        param,
-        param_min,
-        param_max
+        param: np.ndarray,
+        param_min: np.ndarray,
+        param_max: np.ndarray,
     ) -> None:
         self._param[:] = param
         self._param_min[:] = param_min
@@ -227,7 +223,9 @@ class SetMembershipMPC():
         self,
         Q: np.ndarray,
     ) -> np.ndarray:
-        Q_aug = block_diag(Q, np.zeros((self._nparam, self._nparam)))
+        Q_aug = block_diag(
+            Q, np.zeros((self._nparam, self._nparam))
+        )
         return Q_aug
 
 
@@ -239,7 +237,8 @@ class ParameterEstimator():
         dt: float,
     ) -> None:
         self._nparam = model.nx - nx
-        self._Fd, self._Gd, self._Gd_T = self._get_discrete_dynamics(model, nx, dt)
+        self._Fd, self._Gd, self._Gd_T = \
+            self._get_discrete_dynamics(model, nx, dt)
 
 
     def _get_discrete_dynamics(
@@ -247,7 +246,7 @@ class ParameterEstimator():
         model: ParameterAffineQuadrotor,
         nx: int,
         dt: float
-    ):
+    ) -> Tuple[cs.Function, cs.Function, cs.Function]:
         Fd = model.x[:nx] + dt*model.F
         Gd = dt*model.G
         Fd_func = cs.Function("Fd_func", [model.x[:nx], model.u], [Fd])
@@ -280,55 +279,51 @@ class ParameterEstimator():
         d_max: np.ndarray,
         param_min: np.ndarray,
         param_max: np.ndarray,
+        tol: float,
         max_iter: int,
         max: bool
     ) -> float:
         P = np.zeros((self._nparam, self._nparam))
         q = np.zeros(self._nparam)
-        if max:
-            q[idx] = -1.0
-        else:
-            q[idx] = 1.0
+        if max: q[idx] = -1.0
+        else: q[idx] = 1.0
 
-        Fd = np.array(
-            self._Fd(xprev, uprev)
-        ).flatten()
-        Gd = np.array(
-            self._Gd(xprev, uprev)
-        )
+        Fd = np.array(self._Fd(xprev, uprev)).flatten()
+        Gd = np.array(self._Gd(xprev, uprev))
 
         G = np.block([[Gd], [-Gd]])
-        h = np.block(
-            [x-Fd-d_min, -x+Fd+d_max]
-        )
+        h = np.block([x-Fd-d_min, -x+Fd+d_max])
 
         param_bd = proxqp_solve_qp(
             P=P, q=q, G=G, h=h, lb=param_min, ub=param_max,
-            verbose=False, backend="dense", eps_abs=10**-3, max_iter=max_iter,
+            verbose=False, backend="dense",
+            eps_abs=tol, max_iter=max_iter,
         )
+
         try:
             return param_bd[idx]
         except TypeError:
-            if not max:
-                return param_min[idx]
-            else:
-                return param_max[idx]
+            if max: return param_max[idx]
+            else: return param_min[idx]
 
 
     def solve_proj(
         self,
-        param,
-        param_min,
-        param_max,
+        param: np.ndarray,
+        param_min: np.ndarray,
+        param_max: np.ndarray,
+        tol: float,
         max_iter: int
     ) -> np.ndarray:
         P = np.eye(self._nparam)
         q = np.zeros(self._nparam)
         lb = param_min-param
         ub = param_max-param
+
         param_err = proxqp_solve_qp(
             P=P, q=q, lb=lb, ub=ub,
-            verbose=False, backend="dense", eps_abs=10**-3, max_iter=max_iter,
+            verbose=False, backend="dense",
+            eps_abs=tol, max_iter=max_iter,
         )
 
         try:
