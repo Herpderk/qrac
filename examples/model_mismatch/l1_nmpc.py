@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 import numpy as np
-from qrac.dynamics import Quadrotor, Crazyflie
+from qrac.models import Quadrotor, Crazyflie
 from qrac.trajectory import Circle
 from qrac.control.nmpc import NMPC
 from qrac.control.l1_aug import L1Augmentation

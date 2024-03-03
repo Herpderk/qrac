@@ -19,7 +19,7 @@ from typing import List, Tuple
 import atexit
 import shutil
 import os
-from qrac.dynamics import Quadrotor, ParameterAffineQuadrotor
+from qrac.models import Quadrotor, ParameterAffineQuadrotor
 
 
 class NMPC:

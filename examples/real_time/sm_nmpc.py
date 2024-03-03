@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from qrac.dynamics import Crazyflie, Quadrotor, ParameterAffineQuadrotor
+from qrac.models import Crazyflie, Quadrotor, ParameterAffineQuadrotor
 from qrac.trajectory import Circle
 from qrac.control.sm_nmpc import SetMembershipMPC
 from qrac.sim.acados_plant import AcadosPlant

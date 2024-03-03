@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from qrac.dynamics import Crazyflie
+from qrac.models import Crazyflie
 from qrac.trajectory import Circle
 from qrac.control.nmpc import NMPC
 from qrac.sim.acados_plant import AcadosPlant

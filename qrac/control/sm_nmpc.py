@@ -7,7 +7,7 @@ from qpsolvers.solvers.proxqp_ import proxqp_solve_qp
 from scipy.linalg import block_diag
 from typing import Tuple
 import time
-from qrac.dynamics import Quadrotor, ParameterAffineQuadrotor
+from qrac.models import Quadrotor, ParameterAffineQuadrotor
 from qrac.control.nmpc import NMPC
 
 

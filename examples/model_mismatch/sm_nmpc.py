@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from qrac.dynamics import Crazyflie, Quadrotor, ParameterAffineQuadrotor
+from qrac.models import Crazyflie, Quadrotor, ParameterAffineQuadrotor
 from qrac.trajectory import Circle
 from qrac.control.sm_nmpc import SetMembershipMPC
 from qrac.sim.acados_plant import AcadosPlant
@@ -44,16 +44,17 @@ def main():
     R = np.diag([0, 0, 0, 0])
     u_min = model_inacc.u_min
     u_max = model_inacc.u_max
-    mpc_T = 0.01
-    num_nodes = 100
+    mpc_T = 0.005
+    param_T = mpc_T
+    num_nodes = 75
     rti = True
     real_time = False
     mpc = SetMembershipMPC(
         model=model_inacc, Q=Q, R=R, update_gain=update_gain,
         param_tol=param_tol, param_min=param_min, param_max=param_max,
         disturb_max=disturb_max, disturb_min=disturb_min,
-        u_min=u_min, u_max=u_max,
-        time_step=mpc_T, num_nodes=num_nodes, rti=rti, real_time=real_time)
+        u_min=u_min, u_max=u_max, time_step=mpc_T, param_time_step=param_T,
+        num_nodes=num_nodes, rti=rti, real_time=real_time)
 
     # initialize simulator plant
     sim_T = mpc_T / 10

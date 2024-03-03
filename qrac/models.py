@@ -4,7 +4,7 @@ import casadi as cs
 import numpy as np
 from typing import Tuple
 from acados_template import AcadosModel
-    
+
 
 class Quadrotor():
     def __init__(
@@ -242,7 +242,7 @@ class DisturbedQuadrotor(Quadrotor):
                 model.k, model.u_min, model.u_max, "Disturbed_Quadrotor"
             )
             assert type(model) == Quadrotor
-            self.nd = 6
+            self.nd = 12
             self._get_disturbed_dynamics()
 
 
@@ -250,13 +250,11 @@ class DisturbedQuadrotor(Quadrotor):
         d = cs.SX.sym("disturbance", self.nd)
         x_aug = cs.SX(cs.vertcat(self.x, d))
         xdot_aug = cs.SX(cs.vertcat(
-            self.xdot[: self.nx-self.nd],
-            self.xdot[self.nx-self.nd : self.nx] + d,
+            self.xdot[:self.nx] + d,
             cs.SX.zeros(self.nd)
         ))
         self.x = x_aug
         self.xdot = xdot_aug
-        #self.nx, self.nu = self.get_dims()
 
 
 def Crazyflie(

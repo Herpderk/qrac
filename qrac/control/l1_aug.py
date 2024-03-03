@@ -6,7 +6,7 @@ import multiprocessing as mp
 from scipy.linalg import expm
 from typing import Tuple
 import time
-from qrac.dynamics import Quadrotor
+from qrac.models import Quadrotor
 
 
 class L1Augmentation():

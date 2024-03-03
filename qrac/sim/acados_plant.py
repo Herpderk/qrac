@@ -5,7 +5,7 @@ import numpy as np
 import time
 import atexit
 import os
-from qrac.dynamics import Quadrotor, DisturbedQuadrotor
+from qrac.models import Quadrotor, DisturbedQuadrotor
 
 
 class AcadosPlant():

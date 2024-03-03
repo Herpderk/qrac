@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from qrac.dynamics import Crazyflie, Quadrotor
+from qrac.models import Crazyflie, Quadrotor
 from qrac.trajectory import Circle
 from qrac.control.nmpc import NMPC
 from qrac.sim.acados_plant import AcadosPlant
@@ -14,9 +14,9 @@ def main():
 
     # true plant model
     m_true = 1.5 * model_inacc.m
-    Ixx_true = 40 * model_inacc.Ixx
-    Iyy_true = 40 * model_inacc.Iyy
-    Izz_true = 40 * model_inacc.Izz
+    Ixx_true = 60 * model_inacc.Ixx
+    Iyy_true = 60 * model_inacc.Iyy
+    Izz_true = 60 * model_inacc.Izz
     Ax_true = 0
     Ay_true = 0
     Az_true = 0
