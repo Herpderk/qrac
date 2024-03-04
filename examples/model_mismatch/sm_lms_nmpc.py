@@ -34,7 +34,7 @@ def main():
     # initialize estimator
     ctrl_T = 0.005
     u_gain = 1000
-    p_tol = 0.2*np.ones(10)
+    p_tol = 0.1*np.ones(10)
     p_min = ParameterAffineQuadrotor(model_acc).get_parameters()\
         - 2*np.abs(ParameterAffineQuadrotor(model_acc).get_parameters())
     p_max = ParameterAffineQuadrotor(model_acc).get_parameters()\
