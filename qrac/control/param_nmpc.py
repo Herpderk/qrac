@@ -14,8 +14,8 @@ def npify(arr_like) -> np.ndarray:
 class ParameterAdaptiveNMPC():
     def __init__(
         self,
-        estimator,
         model: Quadrotor,
+        estimator,
         Q: np.ndarray,
         R: np.ndarray,
         u_min: np.ndarray,
@@ -34,7 +34,7 @@ class ParameterAdaptiveNMPC():
         self._rt = real_time
 
         model_aug = ParameterAffineQuadrotor(model)
-        self._nparam = model_aug.nparam
+        self._np = model_aug.np
         Q_aug = self._augment_costs(Q)
         self._mpc = NMPC(
             model=model_aug, Q=Q_aug, R=R,
@@ -44,13 +44,13 @@ class ParameterAdaptiveNMPC():
             nlp_tol=nlp_tol, nlp_max_iter=nlp_max_iter,
             qp_max_iter=qp_max_iter
         )
-        self._param_est = estimator
+        self._est = estimator
 
-        self._param = mp.Array("f", model_aug.get_parameters())
+        self._p = mp.Array("f", model_aug.get_parameters())
         self._x = mp.Array("f", np.zeros(model.nx))
         self._xprev = mp.Array("f", np.zeros(self._nx))
         self._uprev = mp.Array("f", np.zeros(self._nu))
-        self._timer = False
+        self._timer = mp.Value("b", False)
         if real_time:
             self._run_flag = mp.Value("b", True)
 
@@ -91,7 +91,7 @@ class ParameterAdaptiveNMPC():
         self._timer.value = timer
         if not self._rt: self._get_param()
 
-        x_aug = np.concatenate((x, npify(self._param)))
+        x_aug = np.concatenate((x, npify(self._p)))
         xset_aug = self._augment_xset(xset)
         self._uprev[:] = self._mpc.get_input(x_aug, xset_aug, timer)
         return npify(self._uprev)
@@ -102,10 +102,9 @@ class ParameterAdaptiveNMPC():
         xset: np.ndarray
     ) -> np.ndarray:
         nx = self._nx
-        nparam = self._nparam
-        xset_aug = np.zeros(self._N * (nx+nparam))
+        xset_aug = np.zeros(self._N * (nx+self._np))
         for k in range(self._N):
-            xset_aug[k*(nx+nparam) : k*(nx+nparam) + nx] =\
+            xset_aug[k*(nx+self._np) : k*(nx+self._np) + nx] =\
                 xset[k*nx : k*nx + nx]
         return xset_aug
 
@@ -123,14 +122,14 @@ class ParameterAdaptiveNMPC():
 
 
     def _get_param(self) -> None:
-        param = self._param_est.get_param(
+        param = self._est.get_param(
             x=npify(self._x),
             xprev=npify(self._xprev),
             uprev=npify(self._uprev),
-            param=npify(self._param),
-            timer=self._timer
+            param=npify(self._p),
+            timer=self._timer.value
         )
-        self._param[:] = param
+        self._p[:] = param
 
 
     def _augment_costs(
@@ -138,6 +137,6 @@ class ParameterAdaptiveNMPC():
         Q: np.ndarray,
     ) -> np.ndarray:
         Q_aug = block_diag(
-            Q, np.zeros((self._nparam, self._nparam))
+            Q, np.zeros((self._np, self._np))
         )
         return Q_aug

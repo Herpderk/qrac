@@ -173,7 +173,7 @@ class ParameterAffineQuadrotor(Quadrotor):
             model.k, model.u_min, model.u_max, "Parameter_Affine_Quadrotor"
         )
         assert type(model) == Quadrotor
-        self.nparam = 10
+        self.np = 10
         self.param_idx = model.nx
         self._get_param_affine_dynamics()
 
@@ -191,7 +191,7 @@ class ParameterAffineQuadrotor(Quadrotor):
 
 
     def _get_param_affine_dynamics(self) -> None:
-        param = cs.SX.sym("param", self.nparam)
+        param = cs.SX.sym("param", self.np)
         x_aug = cs.SX(cs.vertcat(
             self.x, param
         ))
