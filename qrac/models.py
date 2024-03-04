@@ -244,16 +244,15 @@ class DisturbedQuadrotor(Quadrotor):
                 model.k, model.u_min, model.u_max, "Disturbed_Quadrotor"
             )
             assert type(model) == Quadrotor
-            self.nd = 12
             self._get_disturbed_dynamics()
 
 
     def _get_disturbed_dynamics(self) -> None:
-        d = cs.SX.sym("disturbance", self.nd)
+        d = cs.SX.sym("disturbance", self.nx)
         x_aug = cs.SX(cs.vertcat(self.x, d))
         xdot_aug = cs.SX(cs.vertcat(
             self.xdot[:self.nx] + d,
-            cs.SX.zeros(self.nd)
+            cs.SX.zeros(self.nx)
         ))
         self.x = x_aug
         self.xdot = xdot_aug

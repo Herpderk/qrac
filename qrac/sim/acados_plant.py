@@ -19,7 +19,6 @@ class AcadosPlant():
         self._model = DisturbedQuadrotor(model)
         self._nx = model.nx
         self._nu = model.nu
-        self._nd = self._model.nd
         self._solver = self._init_solver(self._model, sim_step, control_step)
         atexit.register(self._clear_files)
 
@@ -32,11 +31,6 @@ class AcadosPlant():
     @property
     def nu(self) -> int:
         return self._nu
-
-
-    @property
-    def nd(self) -> int:
-        return self._nd
 
 
     def update(
@@ -67,7 +61,7 @@ class AcadosPlant():
         st = time.perf_counter()
         assert len(x) == self._nx
         assert len(u) == self._nu
-        assert len(d) == self._nd
+        assert len(d) == self._nx
         self._solver.set("x", np.concatenate((x,d)))
         self._solver.set("u", u)
         status = self._solver.solve()

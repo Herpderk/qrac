@@ -15,7 +15,7 @@ class MinimalSim():
         controller,
         lb_pose: np.ndarray,
         ub_pose: np.ndarray,
-        data_len=400,
+        data_len=1000,
         sprite_size=1.0,
         real_time=False
     ) -> None:
@@ -40,7 +40,7 @@ class MinimalSim():
         self._data_idx = 0
         self._x = mp.Array("f", np.zeros(plant.nx))
         self._xset = mp.Array("f", np.zeros(controller.n_set))
-        self._d = mp.Array("f", np.zeros(plant.nd))
+        self._d = mp.Array("f", np.zeros(plant.nx))
         self._max_steps = mp.Value("i", -1)
         self._steps = mp.Value("i", 0)
         self._sim_time = mp.Value("f", 0.0)
@@ -100,9 +100,8 @@ class MinimalSim():
         self,
         disturbance: np.ndarray,
     ) -> None:
-        assert disturbance.shape[0] == self._plant.nd
+        assert disturbance.shape[0] == self._plant.nx
         try:
-            #self._prev_dstb[:] = self._d[:]
             self._d[:] = disturbance
         except AttributeError:
             raise RuntimeError(
@@ -121,7 +120,7 @@ class MinimalSim():
         self._data_idx = 0
         self._x[:] = x0
         self._xset[:] = np.tile(x0, int(self._controller.n_set/x0.shape[0]))
-        self._d[:] = np.zeros(self._plant.nd)
+        self._d[:] = np.zeros(self._plant.nx)
         self._max_steps.value = max_steps
         self._steps.value = 0
         self._sim_time.value = 0.0
