@@ -148,14 +148,11 @@ class L1Augmentation():
         f = np.array(self._f(x, u_ref)).reshape(self._nz)
         g_m = np.array(self._g_m(x))
         g_um = np.array(self._g_um(x))
-        uref = np.array(self._u_ref[:])
         u_l1 = self._u_l1
         dstb_m = self._dstb_m
         dstb_um = self._dstb_um
-        z += self._dt * (
-            f + g_m@(uref + u_l1 + dstb_m) \
-            + g_um@dstb_um + self._Am@z_err
-        )
+        z += + self._dt * \
+            (f + g_m@(u_l1+dstb_m) + g_um@dstb_um + self._Am@z_err)
         self._z[:] = z
 
 
