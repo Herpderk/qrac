@@ -37,6 +37,9 @@ class NMPC:
         time_step: float,
         num_nodes: int,
         rti: bool,
+        nlp_tol=10**-6,
+        nlp_max_iter=20,
+        qp_max_iter=20
     ) -> None:
         """
         Initialize the MPC with dynamics from casadi variables,
@@ -49,7 +52,10 @@ class NMPC:
         self._u_min = u_min
         self._dt = time_step
         self._N = num_nodes
-        self._solver = self._init_solver(model, Q, R, u_max, u_min, rti)
+        self._solver = self._init_solver(
+            model=model, Q=Q, R=R, u_min=u_min, u_max=u_max, rti=rti,
+            nlp_tol=nlp_tol, nlp_max_iter=nlp_max_iter, qp_max_iter=qp_max_iter
+        )
         # deleting acados compiled files when script is terminated.
         atexit.register(self._clear_files)
 
@@ -149,9 +155,12 @@ class NMPC:
         model: Quadrotor,
         Q: np.ndarray,
         R: np.ndarray,
-        u_max: np.ndarray,
         u_min: np.ndarray,
+        u_max: np.ndarray,
         rti: bool,
+        nlp_tol: float,
+        nlp_max_iter: int,
+        qp_max_iter: int
     ) -> AcadosOcpSolver:
         """
         Guide to acados OCP formulation:
@@ -215,10 +224,10 @@ class NMPC:
         # https://cdn.syscop.de/publications/Frison2020a.pdf
         ocp.solver_options.hpipm_mode = "SPEED_ABS"
         ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
-        ocp.solver_options.qp_solver_iter_max = 3
         ocp.solver_options.qp_solver_warm_start = 1
-        ocp.solver_options.nlp_solver_max_iter = 1
-        ocp.solver_options.nlp_solver_tol_stat = 10**-3
+        ocp.solver_options.qp_solver_iter_max = qp_max_iter
+        ocp.solver_options.nlp_solver_max_iter = nlp_max_iter
+        ocp.solver_options.nlp_solver_tol_stat = nlp_tol
         ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
         ocp.solver_options.integrator_type = "ERK"
         ocp.solver_options.print_level = 0
