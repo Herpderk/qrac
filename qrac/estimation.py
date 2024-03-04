@@ -102,9 +102,9 @@ class SetMembershipEstimator:
                     sol_min[i] = p_min[i]
                     sol_max[i] = p_max[i]
 
-            param_min = np.maximum(sol_min, p_min)
-            param_max = np.minimum(sol_max, p_max)
-        return param_min, param_max
+            p_min = np.maximum(sol_min, p_min)
+            p_max = np.minimum(sol_max, p_max)
+        return p_min, p_max
 
 
     def _solve_lp(
