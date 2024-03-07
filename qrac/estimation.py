@@ -125,10 +125,12 @@ class SetMembershipEstimator:
         G = np.block([[Gd], [-Gd]])
         h = np.block([x-Fd-self._d_min, -x+Fd+self._d_max])
 
+        if max: p_init = self._p_max
+        else: p_init = self._p_min
         p_bd = proxqp_solve_qp(
             P=P, q=q, G=G, h=h,
             lb=self._p_min, ub=self._p_max,
-            verbose=False, backend="dense",
+            initvals=p_init, verbose=False, backend="dense",
             eps_abs=self._sol_tol, max_iter=self._max_iter,
         )
         try:
