@@ -5,7 +5,6 @@ import numpy as np
 from typing import Tuple
 from acados_template import AcadosModel
 
-
 class Quadrotor():
     def __init__(
         self,
@@ -52,6 +51,7 @@ class Quadrotor():
         model_ac.x = self.x
         model_ac.xdot = self.xdot
         model_ac.u = self.u
+        model_ac.p = self.p
         model_ac.name = self.name
         return model_ac
 
@@ -136,6 +136,9 @@ class Quadrotor():
             (self.R@self.T - self.A@v)/self.m + self.g,
             cs.inv(self.J) @ (self.B@self.u - cs.cross(w_B, self.J@w_B))
         ))
+        
+        # ocp problem parameter
+        self.p = []
 
 
     def _assert(
@@ -162,7 +165,7 @@ class Quadrotor():
             raise TypeError("The name should be a string!")
 
 
-class ParameterAffineQuadrotor(Quadrotor):
+class AffineQuadrotor(Quadrotor):
     def __init__(
         self,
         model: Quadrotor
@@ -188,6 +191,14 @@ class ParameterAffineQuadrotor(Quadrotor):
             (self.Iyy-self.Ixx)/self.Izz
         ])
         return param
+    
+    
+    def set_prediction_model(self) -> None:
+        self.nu = self.nx - self.np
+        d = cs.SX.sym("d", self.nu)
+        self.p = self.u
+        self.u = d
+        self.xdot[:self.nu] += d
 
 
     def _get_param_affine_dynamics(self) -> None:
