@@ -257,13 +257,15 @@ class MinimalSim():
     def _run_backend(self) -> None:
         st = time.perf_counter()
         while self._run_flag.value:
+            '''
             if self._rt:
                 et = time.perf_counter()
                 if et - st >= self._controller.dt:
                     st = et
                     self._update_backend()
             else:
-                self._update_backend()
+            '''
+            self._update_backend()
 
 
     def _update_backend(self) -> None:
