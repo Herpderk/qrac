@@ -44,7 +44,6 @@ class Quadrotor():
         self._get_dynamics()
         self.nx, self.nu = self.get_dims()
 
-
     def get_acados_model(self) -> AcadosModel:
         model_ac = AcadosModel()
         model_ac.f_expl_expr = self.xdot
@@ -55,12 +54,10 @@ class Quadrotor():
         model_ac.name = self.name
         return model_ac
 
-
     def get_dims(self) -> Tuple[float]:
         nx = self.x.shape[0]
         nu = self.u.shape[0]
         return nx, nu
-
 
     def _get_dynamics(self) -> None:
         # State Variables: position, rotation, velocity, and body-frame angular velocity
@@ -140,7 +137,6 @@ class Quadrotor():
         # ocp problem parameter
         self.p = []
 
-
     def _assert(
         self,
         m: float,
@@ -165,21 +161,62 @@ class Quadrotor():
             raise TypeError("The name should be a string!")
 
 
-class AffineQuadrotor(Quadrotor):
+class ParameterizedQuadrotor(Quadrotor):
     def __init__(
         self,
         model: Quadrotor
     ) -> None:
+        assert type(model) == Quadrotor
         super().__init__(
             model.m, model.Ixx, model.Iyy, model.Izz,
             model.Ax, model.Ay, model.Az, model.xB, model.yB,
             model.k, model.u_min, model.u_max, "Parameter_Affine_Quadrotor"
         )
-        assert type(model) == Quadrotor
-        self.np = 10
-        self.param_idx = model.nx
-        self._get_param_affine_dynamics()
+        self.np = 7
+        self._get_param_dynamics()
 
+    def get_parameters(self) -> np.ndarray:
+        param = np.array([
+            self.m, self.Ax, self.Ay, self.Az,
+            self.Ixx, self.Iyy, self.Izz
+        ])
+        return param
+
+    def set_prediction_model(self) -> None:
+        self.nu = self.nx - self.np
+        self.p = self.u
+        d = cs.SX.sym("d", self.nu)
+        self.u = d
+        self.xdot[:self.nu] += d
+
+    def _get_param_dynamics(self) -> None:
+        param = cs.SX(cs.vertcat(
+            self.m, self.Ax, self.Ay, self.Az, self.Ixx, self.Iyy, self.Izz
+        ))
+        x_aug = cs.SX(cs.vertcat(
+            self.x, param
+        ))
+        xdot_aug = cs.SX(cs.vertcat(
+            self.xdot, cs.SX.zeros(self.np)
+        ))
+        self.x = x_aug
+        self.xdot = xdot_aug
+        self.nx, self.nu = self.get_dims()
+
+
+class AffineQuadrotor(Quadrotor):
+    def __init__(
+        self,
+        model: Quadrotor
+    ) -> None:
+        assert type(model) == Quadrotor
+        super().__init__(
+            model.m, model.Ixx, model.Iyy, model.Izz,
+            model.Ax, model.Ay, model.Az, model.xB, model.yB,
+            model.k, model.u_min, model.u_max, "Parameter_Affine_Quadrotor"
+        )
+        self.np = 10
+        self._get_param_affine_dynamics()
 
     def get_parameters(self) -> np.ndarray:
         param = np.array([
@@ -192,14 +229,12 @@ class AffineQuadrotor(Quadrotor):
         ])
         return param
     
-    
     def set_prediction_model(self) -> None:
         self.nu = self.nx - self.np
-        d = cs.SX.sym("d", self.nu)
         self.p = self.u
+        d = cs.SX.sym("d", self.nu)
         self.u = d
         self.xdot[:self.nu] += d
-
 
     def _get_param_affine_dynamics(self) -> None:
         param = cs.SX.sym("param", self.np)
@@ -249,14 +284,13 @@ class DisturbedQuadrotor(Quadrotor):
             self,
             model: Quadrotor
         ) -> None:
+            assert type(model) == Quadrotor
             super().__init__(
                 model.m, model.Ixx, model.Iyy, model.Izz,
                 model.Ax, model.Ay, model.Az, model.xB, model.yB,
                 model.k, model.u_min, model.u_max, "Disturbed_Quadrotor"
             )
-            assert type(model) == Quadrotor
             self._get_disturbed_dynamics()
-
 
     def _get_disturbed_dynamics(self) -> None:
         d = cs.SX.sym("disturbance", self.nx)
