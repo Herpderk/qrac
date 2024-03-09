@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from qrac.models import Crazyflie, Quadrotor, ParameterAffineQuadrotor
+from qrac.models import Crazyflie, Quadrotor, AffineQuadrotor
 from qrac.trajectory import Circle
 from qrac.control.param_nmpc import ParameterAdaptiveNMPC
 from qrac.estimation import SetMembershipEstimator, LMS
@@ -35,10 +35,10 @@ def main():
     ctrl_T = 0.005
     u_gain = 1000
     p_tol = 0.1*np.ones(10)
-    p_min = ParameterAffineQuadrotor(model_acc).get_parameters()\
-        - 2*np.abs(ParameterAffineQuadrotor(model_acc).get_parameters())
-    p_max = ParameterAffineQuadrotor(model_acc).get_parameters()\
-        + 2*np.abs(ParameterAffineQuadrotor(model_acc).get_parameters())
+    p_min = AffineQuadrotor(model_acc).get_parameters()\
+        - 2*np.abs(AffineQuadrotor(model_acc).get_parameters())
+    p_max = AffineQuadrotor(model_acc).get_parameters()\
+        + 2*np.abs(AffineQuadrotor(model_acc).get_parameters())
     d_min = -0.1*np.ones(12)
     d_max = -d_min
     
@@ -103,7 +103,7 @@ def main():
     
     print("acc params:")
     print(  
-        ParameterAffineQuadrotor(model_acc).get_parameters()
+        AffineQuadrotor(model_acc).get_parameters()
     )
 
 

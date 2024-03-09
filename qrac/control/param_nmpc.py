@@ -3,8 +3,9 @@
 import numpy as np
 import multiprocessing as mp
 from scipy.linalg import block_diag
-from qrac.models import Quadrotor, ParameterAffineQuadrotor
+from qrac.models import Quadrotor, AffineQuadrotor
 from qrac.control.nmpc import NMPC
+import time
 
 
 def npify(arr_like) -> np.ndarray:
@@ -33,9 +34,9 @@ class ParameterAdaptiveNMPC():
         self._N = num_nodes
         self._rt = real_time
 
-        model_aug = ParameterAffineQuadrotor(model)
+        model_aug = AffineQuadrotor(model)
         self._np = model_aug.np
-        Q_aug = self._augment_costs(Q)
+        Q_aug = self._augment_cost(Q)
         self._mpc = NMPC(
             model=model_aug, Q=Q_aug, R=R,
             u_min=u_min, u_max=u_max,
@@ -48,8 +49,7 @@ class ParameterAdaptiveNMPC():
 
         self._p = mp.Array("f", model_aug.get_parameters())
         self._x = mp.Array("f", np.zeros(model.nx))
-        self._xprev = mp.Array("f", np.zeros(self._nx))
-        self._uprev = mp.Array("f", np.zeros(self._nu))
+        self._u = mp.Array("f", np.zeros(self._nu))
         self._timer = mp.Value("b", False)
         if real_time:
             self._run_flag = mp.Value("b", True)
@@ -67,7 +67,7 @@ class ParameterAdaptiveNMPC():
 
     def start(self) -> None:
         if not self._rt:
-            print("This controller is not in real-time mode!")
+            print("Cannot call 'start' outside of real-time mode!")
         else:
             proc = mp.Process(target=self._param_proc, args=[])
             proc.start()
@@ -75,7 +75,7 @@ class ParameterAdaptiveNMPC():
 
     def stop(self) -> None:
         if not self._rt:
-            print("This controller is not in real-time mode!")
+            print("Cannot call 'stop' outside of real-time mode!")
         else:
             self._run_flag.value = False
 
@@ -86,15 +86,14 @@ class ParameterAdaptiveNMPC():
         xset: np.ndarray,
         timer=False,
     ) -> np.ndarray:
-        self._xprev[:] = self._x[:]
         self._x[:] = x
         self._timer.value = timer
         if not self._rt: self._get_param()
 
         x_aug = np.concatenate((x, npify(self._p)))
         xset_aug = self._augment_xset(xset)
-        self._uprev[:] = self._mpc.get_input(x_aug, xset_aug, timer)
-        return npify(self._uprev)
+        self._u[:] = self._mpc.get_input(x_aug, xset_aug, timer)
+        return npify(self._u)
 
 
     def _augment_xset(
@@ -117,22 +116,25 @@ class ParameterAdaptiveNMPC():
 
 
     def _run_param_est(self) -> None:
+        st = time.perf_counter()
         while self._run_flag.value:
-            self._get_param()
+            et = time.perf_counter()
+            if et - st >= self.dt:
+                st = et
+                self._get_param()
 
 
     def _get_param(self) -> None:
         param = self._est.get_param(
             x=npify(self._x),
-            xprev=npify(self._xprev),
-            uprev=npify(self._uprev),
+            u=npify(self._u),
             param=npify(self._p),
             timer=self._timer.value
         )
         self._p[:] = param
 
 
-    def _augment_costs(
+    def _augment_cost(
         self,
         Q: np.ndarray,
     ) -> np.ndarray:
