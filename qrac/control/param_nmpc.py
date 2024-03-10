@@ -3,7 +3,7 @@
 import numpy as np
 import multiprocessing as mp
 from scipy.linalg import block_diag
-from qrac.models import Quadrotor, AffineQuadrotor
+from qrac.models import Quadrotor, AffineQuadrotor, ParameterizedQuadrotor
 from qrac.control.nmpc import NMPC
 import time
 
@@ -34,7 +34,11 @@ class ParameterAdaptiveNMPC():
         self._N = num_nodes
         self._rt = real_time
 
-        model_aug = AffineQuadrotor(model)
+        self._est = estimator
+        if estimator.is_nonlinear:
+            model_aug = ParameterizedQuadrotor(model)
+        else:
+            model_aug = AffineQuadrotor(model)
         self._np = model_aug.np
         Q_aug = self._augment_cost(Q)
         self._mpc = NMPC(
@@ -45,7 +49,6 @@ class ParameterAdaptiveNMPC():
             nlp_tol=nlp_tol, nlp_max_iter=nlp_max_iter,
             qp_max_iter=qp_max_iter
         )
-        self._est = estimator
 
         self._p = mp.Array("f", model_aug.get_parameters())
         self._x = mp.Array("f", np.zeros(model.nx))

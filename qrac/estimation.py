@@ -7,8 +7,10 @@ from scipy.linalg import block_diag
 from qpsolvers.solvers.proxqp_ import proxqp_solve_qp
 import time
 from typing import Tuple
-from qrac.models import Quadrotor, AffineQuadrotor
-from qrac.control.nmpc import NMPC
+import atexit
+import shutil
+import os
+from qrac.models import Quadrotor, AffineQuadrotor, ParameterizedQuadrotor
 
 
 class SetMembershipEstimator:
@@ -43,6 +45,9 @@ class SetMembershipEstimator:
         self._p_max = param_max
         self._start = False
 
+    @property
+    def is_nonlinear(self) -> bool:
+        return False
 
     def _get_discrete_dynamics(
         self,
@@ -56,7 +61,6 @@ class SetMembershipEstimator:
         Gd_func = cs.Function("Gd_func", [model.x[:nx], model.u], [Gd])
         Gd_T_func = cs.Function("Gd_T_func", [model.x[:nx], model.u], [Gd.T])
         return Fd_func, Gd_func, Gd_T_func
-
 
     def get_param(
         self,
@@ -74,12 +78,10 @@ class SetMembershipEstimator:
             timer=False
         )
         self._x = x
-        print(f"params: {p}\n")
         if timer:
             et = time.perf_counter()
             print(f"sm runtime: {et - st}")
         return p
-
 
     def _sm_update(
         self,
@@ -114,7 +116,6 @@ class SetMembershipEstimator:
             p_max = np.minimum(sol_max, p_max)
         return p_min, p_max
 
-
     def _solve_lp(
         self,
         idx: int,
@@ -147,7 +148,6 @@ class SetMembershipEstimator:
             if max: return self._p_max[idx]
             else: return self._p_min[idx]
 
-
     def _update_param_bds(
         self,
         param_min: np.ndarray,
@@ -177,6 +177,9 @@ class LMS():
         self._max_iter = max_iter
         self._x = np.zeros(self._nx)
 
+    @property
+    def is_nonlinear(self) -> bool:
+        return False
 
     def _get_discrete_dynamics(
         self,
@@ -190,7 +193,6 @@ class LMS():
         Gd_func = cs.Function("Gd_func", [model.x[:nx], model.u], [Gd])
         Gd_T_func = cs.Function("Gd_T_func", [model.x[:nx], model.u], [Gd.T])
         return Fd_func, Gd_func, Gd_T_func
-
 
     def get_param(
         self,
@@ -209,11 +211,11 @@ class LMS():
             p=p_lms, p_min=param_min, p_max=param_max
         )
         self._x = x
+        print(f"params: {p_proj}\n")
         if timer:
             et = time.perf_counter()
             print(f"LMS runtime: {et - st}")
         return p_proj
-
 
     def _solve_proj(
         self,
@@ -237,7 +239,7 @@ class LMS():
             return p
 
 
-class LinearMHE():
+class MHE():
     def __init__(
         self,
         model: Quadrotor,
@@ -253,6 +255,7 @@ class LinearMHE():
         nlp_tol=10**-6,
         nlp_max_iter=10,
         qp_max_iter=10,
+        nonlinear=False,
     ) -> None:
         """
         Q -> weight for params
@@ -262,15 +265,21 @@ class LinearMHE():
         self._nu = model.nu
         self._dt = time_step
         self._N = num_nodes
-        self._p_min = param_min
-        self._p_max = param_max
         self._d_min = disturb_min
         self._d_max = disturb_max
         self._d_avg = (disturb_min + disturb_max) / 2
+        self._nl = nonlinear
 
-        model_aug = AffineQuadrotor(model)
+        if nonlinear:
+            model_aug = ParameterizedQuadrotor(model)
+        else:
+            model_aug = AffineQuadrotor(model)
         model_aug.set_prediction_model()
         self._np = model_aug.np
+        assert param_max.shape[0] == param_min.shape[0] == self._np
+        self._p_min = param_min
+        self._p_max = param_max
+
         Q_aug = self._augment_costs(Q)
         self._solver = self._init_solver(
             model=model_aug, Q=Q_aug, R=R,
@@ -279,11 +288,16 @@ class LinearMHE():
             nlp_tol=nlp_tol, nlp_max_iter=nlp_max_iter,
             qp_max_iter=qp_max_iter
         )
+        atexit.register(self._clear_files)
 
-        self._x = np.zeros((num_nodes, self._nx))
-        self._u = np.zeros((num_nodes-1, self._nu))
-        self._d = np.zeros((num_nodes-1, self._nx))
+        self._x = np.zeros((self._N, self._nx))
+        self._u = np.zeros((self._N-1, self._nu))
+        self._d = np.zeros((self._N-1, self._nx))
+        
 
+    @property
+    def is_nonlinear(self) -> bool:
+        return self._nl
 
     def get_param(
         self,
@@ -298,11 +312,11 @@ class LinearMHE():
             x=x, u=u, p=param, p_min=param_min,
             p_max=param_max, timer=timer
         )
-        p_mhe = np.array(
+        p = np.array(
             self._solver.get(1,"x")[self._nx : self._nx+self._np]
         )
-        return p_mhe
-
+        print(f"params: {p}\n")
+        return p
 
     def _solve(
         self,
@@ -317,8 +331,6 @@ class LinearMHE():
         assert x.shape[0] == self._nx
         assert u.shape[0] == self._nu
         assert p.shape[0] == self._np
-        #assert p_min.shape[0] == self._np
-        #assert p_max.shape[0] == self._np
         
         # set history of x, u, and d at each stage
         for k in range(self._N - 1):
@@ -342,7 +354,6 @@ class LinearMHE():
             et = time.perf_counter()
             print(f"mhe runtime: {et - st}")
 
-
     def _set_stage(
         self,
         k: int,
@@ -364,17 +375,13 @@ class LinearMHE():
 
         if len(p_min) == 0:
             p_min = self._p_min
-        if k == 0:
-            p_min = np.concatenate((x, p_min))
-        self._solver.set(k, "lbx", p_min)
+        lbx_aug = np.concatenate((x, p_min))
+        self._solver.set(k, "lbx", lbx_aug)
 
         if len(p_max) == 0:
             p_max = self._p_max
-        if k == 0:
-            p_max = np.concatenate((x, p_max))
-        self._solver.set(k, "ubx", p_max)
-
-
+        ubx_aug = np.concatenate((x, p_max))
+        self._solver.set(k, "ubx", ubx_aug)
 
     def _update_horizon(
         self,
@@ -382,15 +389,6 @@ class LinearMHE():
         u: np.ndarray,
         d: np.ndarray
     ):
-        '''
-        for k in range(self._N):
-            self._x[k] = np.array(
-                self._solver.get(k+1, "x")[:self._nx]
-            )
-        for k in range(self._N-1):
-            self._d[k] = np.array(
-                self._solver.get(k+1, "u")
-        )'''
         self._x = np.block([
             [self._x[1:self._N, :]], [x]
         ])
@@ -400,7 +398,6 @@ class LinearMHE():
         self._d = np.block([
             [self._d[1:self._N, :]], [d]
         ])    
-
 
     def _init_solver(
         self,
@@ -424,7 +421,7 @@ class LinearMHE():
         ocp.dims.nx = model.nx
         ocp.dims.nu = model.nu
         ocp.dims.ny = ny
-        ocp.dims.nbx = model.np
+        ocp.dims.nbx = model.nx
         ocp.dims.nbx_0 = ocp.dims.nbx
         ocp.dims.nbx_e = ocp.dims.nbx
         ocp.dims.nbu = model.nu
@@ -460,13 +457,21 @@ class LinearMHE():
         # Initial state (will be overwritten)
         ocp.constraints.x0 = np.zeros(model.nx)
 
-        # augmented state
-        ocp.constraints.idxbx = np.arange(model.np)
-        ocp.constraints.lbx = p_min
-        ocp.constraints.ubx = p_max
-        ocp.constraints.idxbx_e = np.arange(model.np)
-        ocp.constraints.lbx_e = p_min
-        ocp.constraints.ubx_e = p_max
+        # augmented state constraints (will be overwritten)
+        ocp.constraints.idxbx = np.arange(model.nx)
+        ocp.constraints.lbx = np.concatenate(
+            (-np.ones(self._nx), p_min)
+        )
+        ocp.constraints.ubx = np.concatenate(
+            (np.ones(self._nx), p_max)
+        )
+        ocp.constraints.idxbx_e = np.arange(model.nx)
+        ocp.constraints.lbx_e = np.concatenate(
+            (-np.ones(self._nx), p_min)
+        )
+        ocp.constraints.ubx_e = np.concatenate(
+            (np.ones(self._nx), p_max)
+        )
 
         # partial condensing HPIPM is fastest:
         # https://cdn.syscop.de/publications/Frison2020a.pdf
@@ -480,8 +485,8 @@ class LinearMHE():
         ocp.solver_options.integrator_type = "ERK"
         ocp.solver_options.print_level = 0
 
-        ocp.code_export_directory = "linear_mhe_c_code"
-        name = "acados_linear_mhe.json"
+        ocp.code_export_directory = "mhe_c_code"
+        name = "acados_mhe.json"
 
         if rti:
             ocp.solver_options.nlp_solver_type = "SQP_RTI"
@@ -492,7 +497,6 @@ class LinearMHE():
             solver = AcadosOcpSolver(ocp, json_file=name)
         return solver
 
-
     def _augment_costs(
         self,
         Q: np.ndarray
@@ -502,7 +506,15 @@ class LinearMHE():
         )
         return Q_aug
 
-
-class NonlinearMHE():
-    def __init__(self) -> None:
-        pass
+    def _clear_files(self) -> None:
+        """
+        Clean up the acados generated files.
+        """
+        try:
+            shutil.rmtree("mhe_c_code")
+        except:
+            print("failed to delete mhe_c_code")
+        try:
+            os.remove("acados_mhe.json")
+        except:
+            print("failed to delete acados_mhe.json")

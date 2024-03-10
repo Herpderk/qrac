@@ -1,9 +1,9 @@
 #!/usr/bin/python3
 
-from qrac.models import Crazyflie, Quadrotor, AffineQuadrotor
+from qrac.models import Crazyflie, Quadrotor, ParameterizedQuadrotor
 from qrac.trajectory import Circle
 from qrac.control.param_nmpc import ParameterAdaptiveNMPC
-from qrac.estimation import SetMembershipEstimator, MHE
+from qrac.estimation import MHE
 from qrac.sim.acados_plant import AcadosPlant
 from qrac.sim.minimal_sim import MinimalSim
 import numpy as np
@@ -32,31 +32,22 @@ def main():
         k_true, u_min_true, u_max_true)
 
     # init estimator
-    Q_mhe = 1*np.diag([1,1,1,1,1,1,1,1,1,1])
-    R_mhe = 1000 * np.diag([1,1,1, 1,1,1, 1,1,1, 1,1,1])
-    p_min = AffineQuadrotor(model_acc).get_parameters()\
-        - 2*np.abs(AffineQuadrotor(model_acc).get_parameters())
-    p_max = AffineQuadrotor(model_acc).get_parameters()\
-        + 2*np.abs(AffineQuadrotor(model_acc).get_parameters())
-    d_min = -0.1*np.ones(12)
+    Q_mhe = 10**-3*np.diag([1, 1, 1, 1, 1, 1, 1])
+    R_mhe = 10**5 * np.diag([1,1,1, 1,1,1, 1,1,1, 1,1,1])
+    p_min = np.zeros(7)
+    p_max = 3 * ParameterizedQuadrotor(model_acc).get_parameters()
+    d_min = -0.01*np.ones(12)
     d_max = -d_min
+
     ctrl_T = 0.01
-    num_nodes_mhe = 20
+    num_nodes_mhe = 50
     mhe = MHE(
         model=model_inacc, Q=Q_mhe, R=R_mhe,
         param_min=p_min, param_max=p_max,
         disturb_min=d_min, disturb_max=d_max,
         time_step=ctrl_T, num_nodes=num_nodes_mhe,
-        rti=True, nonlinear=False,
-        nlp_tol=10**-6, nlp_max_iter=1, qp_max_iter=3
-    )
-
-    p_tol = 0.1*np.ones(10)
-    sm = SetMembershipEstimator(
-        model=model_inacc, estimator=mhe,
-        param_tol=p_tol, param_min=p_min, param_max=p_max,
-        disturb_min=d_min, disturb_max=d_max, time_step=ctrl_T,
-        qp_tol=10**-6, max_iter=10
+        rti=True, nonlinear=True,
+        nlp_tol=10**-6, nlp_max_iter=1, qp_max_iter=5,
     )
 
     # init mpc
@@ -67,10 +58,10 @@ def main():
     num_nodes = 75
     real_time = False
     mhe_mpc = ParameterAdaptiveNMPC(
-        model=model_inacc, estimator=sm, Q=Q, R=R,
+        model=model_inacc, estimator=mhe, Q=Q, R=R,
         u_min=u_min, u_max=u_max, time_step=ctrl_T,
-        num_nodes=num_nodes, real_time=real_time, rti=True, 
-        nlp_tol=10**-6, nlp_max_iter=1, qp_max_iter=5
+        num_nodes=num_nodes, real_time=real_time, rti=True,
+        nlp_tol=10**-6, nlp_max_iter=1, qp_max_iter=10
     )
 
     # init simulator plant
@@ -100,7 +91,6 @@ def main():
     dt = mhe_mpc.dt
     t0 = sim.timestamp
 
-    #mhe_mpc.start()
     while sim.is_alive:
         t = sim.timestamp
         for k in range(num_nodes):
@@ -108,11 +98,10 @@ def main():
                 np.array(traj.get_setpoint(t - t0))
             t += dt
         sim.update_setpoint(xset=xset)
-    #mhe_mpc.stop()
     
     print("acc params:")
     print(  
-        AffineQuadrotor(model_acc).get_parameters()
+        ParameterizedQuadrotor(model_acc).get_parameters()
     )
 
 

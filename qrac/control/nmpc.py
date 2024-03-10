@@ -8,7 +8,7 @@ May need to install qpOASES version 3.1 as well.
 
 #!/usr/bin/python3
 
-from acados_template import AcadosOcpSolver, AcadosOcp, AcadosModel
+from acados_template import AcadosOcpSolver, AcadosOcp
 import numpy as np
 from scipy.linalg import block_diag
 from scipy.interpolate import make_interp_spline
@@ -19,7 +19,8 @@ from typing import List, Tuple
 import atexit
 import shutil
 import os
-from qrac.models import Quadrotor, AffineQuadrotor
+from qrac.models import Quadrotor, AffineQuadrotor,\
+                        ParameterizedQuadrotor
 
 
 class NMPC:
@@ -330,8 +331,9 @@ class NMPC:
         time_step: float,
         num_nodes: int,
     ) -> None:
-        if type(model) != Quadrotor:
-            if type(model) != AffineQuadrotor:
+        if type(model) != Quadrotor \
+            and type(model) !=AffineQuadrotor\
+            and type(model) != ParameterizedQuadrotor:
                 raise TypeError(
                     "The inputted model must be of type 'Quadrotor'!")
         if type(Q) != np.ndarray:

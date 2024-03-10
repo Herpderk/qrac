@@ -170,7 +170,8 @@ class ParameterizedQuadrotor(Quadrotor):
         super().__init__(
             model.m, model.Ixx, model.Iyy, model.Izz,
             model.Ax, model.Ay, model.Az, model.xB, model.yB,
-            model.k, model.u_min, model.u_max, "Parameter_Affine_Quadrotor"
+            model.k, model.u_min, model.u_max,
+            "Nonlinear_Parameterized_Quadrotor"
         )
         self.np = 7
         self._get_param_dynamics()
@@ -190,9 +191,7 @@ class ParameterizedQuadrotor(Quadrotor):
         self.xdot[:self.nu] += d
 
     def _get_param_dynamics(self) -> None:
-        param = cs.SX(cs.vertcat(
-            self.m, self.Ax, self.Ay, self.Az, self.Ixx, self.Iyy, self.Izz
-        ))
+        param = cs.SX.sym("param", self.np)
         x_aug = cs.SX(cs.vertcat(
             self.x, param
         ))
