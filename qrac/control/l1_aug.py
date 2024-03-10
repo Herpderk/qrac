@@ -68,13 +68,17 @@ class L1Augmentation():
 
 
     def start(self) -> None:
-        if self._rt:
+        if not self._rt:
+            print("This controller is not in real-time mode!")
+        else:
             proc = mp.Process(target=self._ctrl_ref_proc, args=[])
             proc.start()
             
 
     def stop(self) -> None:
-        if self._rt:
+        if not self._rt:
+            print("This controller is not in real-time mode!")
+        else:
             self._run_flag.value = False
 
 

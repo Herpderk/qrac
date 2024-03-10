@@ -5,7 +5,6 @@ import numpy as np
 from typing import Tuple
 from acados_template import AcadosModel
 
-
 class Quadrotor():
     def __init__(
         self,
@@ -45,22 +44,20 @@ class Quadrotor():
         self._get_dynamics()
         self.nx, self.nu = self.get_dims()
 
-
     def get_acados_model(self) -> AcadosModel:
         model_ac = AcadosModel()
         model_ac.f_expl_expr = self.xdot
         model_ac.x = self.x
         model_ac.xdot = self.xdot
         model_ac.u = self.u
+        model_ac.p = self.p
         model_ac.name = self.name
         return model_ac
-
 
     def get_dims(self) -> Tuple[float]:
         nx = self.x.shape[0]
         nu = self.u.shape[0]
         return nx, nu
-
 
     def _get_dynamics(self) -> None:
         # State Variables: position, rotation, velocity, and body-frame angular velocity
@@ -136,7 +133,9 @@ class Quadrotor():
             (self.R@self.T - self.A@v)/self.m + self.g,
             cs.inv(self.J) @ (self.B@self.u - cs.cross(w_B, self.J@w_B))
         ))
-
+        
+        # ocp problem parameter
+        self.p = []
 
     def _assert(
         self,
@@ -162,19 +161,61 @@ class Quadrotor():
             raise TypeError("The name should be a string!")
 
 
-class ParameterAffineQuadrotor(Quadrotor):
+class ParameterizedQuadrotor(Quadrotor):
     def __init__(
         self,
         model: Quadrotor
     ) -> None:
+        assert type(model) == Quadrotor
+        super().__init__(
+            model.m, model.Ixx, model.Iyy, model.Izz,
+            model.Ax, model.Ay, model.Az, model.xB, model.yB,
+            model.k, model.u_min, model.u_max,
+            "Nonlinear_Parameterized_Quadrotor"
+        )
+        self.np = 7
+        self._get_param_dynamics()
+
+    def get_parameters(self) -> np.ndarray:
+        param = np.array([
+            self.m, self.Ax, self.Ay, self.Az,
+            self.Ixx, self.Iyy, self.Izz
+        ])
+        return param
+
+    def set_prediction_model(self) -> None:
+        self.nu = self.nx - self.np
+        self.p = self.u
+        d = cs.SX.sym("d", self.nu)
+        self.u = d
+        self.xdot[:self.nu] += d
+
+    def _get_param_dynamics(self) -> None:
+        param = cs.SX.sym("param", self.np)
+        x_aug = cs.SX(cs.vertcat(
+            self.x, param
+        ))
+        xdot_aug = cs.SX(cs.vertcat(
+            self.xdot, cs.SX.zeros(self.np)
+        ))
+        self.x = x_aug
+        self.xdot = xdot_aug
+        self.nx, self.nu = self.get_dims()
+
+
+class AffineQuadrotor(Quadrotor):
+    def __init__(
+        self,
+        model: Quadrotor
+    ) -> None:
+        assert type(model) == Quadrotor
         super().__init__(
             model.m, model.Ixx, model.Iyy, model.Izz,
             model.Ax, model.Ay, model.Az, model.xB, model.yB,
             model.k, model.u_min, model.u_max, "Parameter_Affine_Quadrotor"
         )
-        assert type(model) == Quadrotor
+        self.np = 10
         self._get_param_affine_dynamics()
-
 
     def get_parameters(self) -> np.ndarray:
         param = np.array([
@@ -186,10 +227,16 @@ class ParameterAffineQuadrotor(Quadrotor):
             (self.Iyy-self.Ixx)/self.Izz
         ])
         return param
-
+    
+    def set_prediction_model(self) -> None:
+        self.nu = self.nx - self.np
+        self.p = self.u
+        d = cs.SX.sym("d", self.nu)
+        self.u = d
+        self.xdot[:self.nu] += d
 
     def _get_param_affine_dynamics(self) -> None:
-        param = cs.SX.sym("param", 10)
+        param = cs.SX.sym("param", self.np)
         x_aug = cs.SX(cs.vertcat(
             self.x, param
         ))
@@ -236,22 +283,20 @@ class DisturbedQuadrotor(Quadrotor):
             self,
             model: Quadrotor
         ) -> None:
+            assert type(model) == Quadrotor
             super().__init__(
                 model.m, model.Ixx, model.Iyy, model.Izz,
                 model.Ax, model.Ay, model.Az, model.xB, model.yB,
                 model.k, model.u_min, model.u_max, "Disturbed_Quadrotor"
             )
-            assert type(model) == Quadrotor
-            self.nd = 12
             self._get_disturbed_dynamics()
 
-
     def _get_disturbed_dynamics(self) -> None:
-        d = cs.SX.sym("disturbance", self.nd)
+        d = cs.SX.sym("disturbance", self.nx)
         x_aug = cs.SX(cs.vertcat(self.x, d))
         xdot_aug = cs.SX(cs.vertcat(
             self.xdot[:self.nx] + d,
-            cs.SX.zeros(self.nd)
+            cs.SX.zeros(self.nx)
         ))
         self.x = x_aug
         self.xdot = xdot_aug

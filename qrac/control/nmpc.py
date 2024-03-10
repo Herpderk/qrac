@@ -8,7 +8,7 @@ May need to install qpOASES version 3.1 as well.
 
 #!/usr/bin/python3
 
-from acados_template import AcadosOcpSolver, AcadosOcp, AcadosModel
+from acados_template import AcadosOcpSolver, AcadosOcp
 import numpy as np
 from scipy.linalg import block_diag
 from scipy.interpolate import make_interp_spline
@@ -19,7 +19,8 @@ from typing import List, Tuple
 import atexit
 import shutil
 import os
-from qrac.models import Quadrotor, ParameterAffineQuadrotor
+from qrac.models import Quadrotor, AffineQuadrotor,\
+                        ParameterizedQuadrotor
 
 
 class NMPC:
@@ -37,6 +38,9 @@ class NMPC:
         time_step: float,
         num_nodes: int,
         rti: bool,
+        nlp_tol=10**-6,
+        nlp_max_iter=20,
+        qp_max_iter=20
     ) -> None:
         """
         Initialize the MPC with dynamics from casadi variables,
@@ -46,10 +50,13 @@ class NMPC:
         self._nx = model.nx
         self._nu = model.nu
         self._assert(model, Q, R, u_max, u_min, time_step, num_nodes,)
-        self._u_min = u_min
+        self._u_avg = (u_min + u_max) / 2
         self._dt = time_step
         self._N = num_nodes
-        self._solver = self._init_solver(model, Q, R, u_max, u_min, rti)
+        self._solver = self._init_solver(
+            model=model, Q=Q, R=R, u_min=u_min, u_max=u_max, rti=rti,
+            nlp_tol=nlp_tol, nlp_max_iter=nlp_max_iter, qp_max_iter=qp_max_iter
+        )
         # deleting acados compiled files when script is terminated.
         atexit.register(self._clear_files)
 
@@ -134,14 +141,15 @@ class NMPC:
         # the reference input will be the hover input
         for k in range(self._N):
             yref = np.concatenate(
-                (xset[k*self._nx : k*self._nx + self._nx], self._u_min))
+                (xset[k*self._nx : k*self._nx + self._nx], self._u_avg))
             self._solver.set(k, "yref", yref)
         
         self._solver.solve()
         #self._solver.print_statistics()
 
         if timer:
-            print(f"mpc runtime: {time.perf_counter() - st}")
+            et = time.perf_counter()
+            print(f"mpc runtime: {et - st}")
 
 
     def _init_solver(
@@ -149,26 +157,29 @@ class NMPC:
         model: Quadrotor,
         Q: np.ndarray,
         R: np.ndarray,
-        u_max: np.ndarray,
         u_min: np.ndarray,
+        u_max: np.ndarray,
         rti: bool,
+        nlp_tol: float,
+        nlp_max_iter: int,
+        qp_max_iter: int
     ) -> AcadosOcpSolver:
         """
         Guide to acados OCP formulation:
         https://github.com/acados/acados/blob/master/docs/problem_formulation/problem_formulation_ocp_mex.pdf
         """
-        ny = self._nx + self._nu  # combine x and u into y
+        ny = model.nx + model.nu  # combine x and u into y
 
         ocp = AcadosOcp()
         ocp.model = model.get_acados_model()
         ocp.dims.N = self._N
-        ocp.dims.nx = self._nx
-        ocp.dims.nu = self._nu
+        ocp.dims.nx = model.nx
+        ocp.dims.nu = model.nu
         ocp.dims.ny = ny
-        ocp.dims.nbx = 4 # number of states being constrained
+        ocp.dims.nbx = model.nx
         ocp.dims.nbx_0 = ocp.dims.nx
-        ocp.dims.nbx_e = ocp.dims.nbx
-        ocp.dims.nbu = self._nu
+        ocp.dims.nbx_e = ocp.dims.nx
+        ocp.dims.nbu = model.nu
 
         # total horizon in seconds
         ocp.solver_options.tf = self._dt * self._N
@@ -181,19 +192,19 @@ class NMPC:
         ocp.cost.W = block_diag(Q,R)
 
         # use V coeffs to map x & u to y
-        ocp.cost.Vx = np.zeros((ny, self._nx))
-        ocp.cost.Vx[: self._nx, : self._nx] = np.eye(self._nx)
-        ocp.cost.Vu = np.zeros((ny, self._nu))
-        ocp.cost.Vu[-self._nu :, -self._nu :] = np.eye(self._nu)
+        ocp.cost.Vx = np.zeros((ny, model.nx))
+        ocp.cost.Vx[: model.nx, : model.nx] = np.eye(model.nx)
+        ocp.cost.Vu = np.zeros((ny, model.nu))
+        ocp.cost.Vu[-model.nu :, -model.nu :] = np.eye(model.nu)
 
         # Initialize reference trajectory (will be overwritten)
         ocp.cost.yref = np.zeros(ny)
 
         # Initial state (will be overwritten)
-        ocp.constraints.x0 = np.zeros(self._nx)
+        ocp.constraints.x0 = np.zeros(model.nx)
 
         # control input constraints (square of motor freq)
-        ocp.constraints.idxbu = np.arange(self._nu)
+        ocp.constraints.idxbu = np.arange(model.nu)
         ocp.constraints.lbu = u_min
         ocp.constraints.ubu = u_max
 
@@ -215,21 +226,24 @@ class NMPC:
         # https://cdn.syscop.de/publications/Frison2020a.pdf
         ocp.solver_options.hpipm_mode = "SPEED_ABS"
         ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
-        ocp.solver_options.qp_solver_iter_max = 3
         ocp.solver_options.qp_solver_warm_start = 1
-        ocp.solver_options.nlp_solver_max_iter = 1
-        ocp.solver_options.nlp_solver_tol_stat = 10**-3
+        ocp.solver_options.qp_solver_iter_max = qp_max_iter
+        ocp.solver_options.nlp_solver_max_iter = nlp_max_iter
+        ocp.solver_options.nlp_solver_tol_stat = nlp_tol
         ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
         ocp.solver_options.integrator_type = "ERK"
         ocp.solver_options.print_level = 0
-        
+
+        ocp.code_export_directory = "mpc_c_code"
+        name = "acados_mpc.json"
+
         if rti:
             ocp.solver_options.nlp_solver_type = "SQP_RTI"
-            solver = AcadosOcpSolver(ocp)
+            solver = AcadosOcpSolver(ocp, json_file=name)
             solver.options_set("rti_phase", 0)
         else:
             ocp.solver_options.nlp_solver_type = "SQP"
-            solver = AcadosOcpSolver(ocp)
+            solver = AcadosOcpSolver(ocp,  json_file=name)
         return solver
 
 
@@ -317,8 +331,9 @@ class NMPC:
         time_step: float,
         num_nodes: int,
     ) -> None:
-        if type(model) != Quadrotor:
-            if type(model) != ParameterAffineQuadrotor:
+        if type(model) != Quadrotor \
+            and type(model) !=AffineQuadrotor\
+            and type(model) != ParameterizedQuadrotor:
                 raise TypeError(
                     "The inputted model must be of type 'Quadrotor'!")
         if type(Q) != np.ndarray:
@@ -349,11 +364,10 @@ class NMPC:
         Clean up the acados generated files.
         """
         try:
-            shutil.rmtree("c_generated_code")
+            shutil.rmtree("mpc_c_code")
         except:
-            print("failed to delete c_generated_code")
-
+            print("failed to delete mpc_c_code")
         try:
-            os.remove("acados_ocp_nlp.json")
+            os.remove("acados_mpc.json")
         except:
-            print("failed to delete acados_ocp_nlp.json")
+            print("failed to delete acados_mpc.json")
