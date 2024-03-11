@@ -5,6 +5,7 @@ import numpy as np
 import time
 import atexit
 import os
+import shutil
 from qrac.models import Quadrotor, DisturbedQuadrotor
 
 
@@ -111,5 +112,11 @@ class AcadosPlant():
         """
         Clean up the acados generated files.
         """
-        try: os.remove("acados_sim.json")
-        except: print("acados_sim.json")
+        try:
+            shutil.rmtree("c_generated_code")
+        except:
+            print("failed to delete c_generated_code")
+        try:
+            os.remove("acados_sim.json")
+        except:
+            print("acados_sim.json")
