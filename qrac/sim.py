@@ -2,6 +2,7 @@
 
 from acados_template import AcadosSim, AcadosSimSolver
 import numpy as np
+import matplotlib.pyplot as plt
 import time
 import atexit
 import os
@@ -9,17 +10,25 @@ import shutil
 from qrac.models import Quadrotor, DisturbedQuadrotor
 
 
-class AcadosPlant():
+class MinimalSim():
     def __init__(
         self,
+        x0: np.ndarray,
         model: Quadrotor,
         sim_step: float,
         control_step: float,
+        data_len: int,
     ) -> None:
         self._assert(model, sim_step, control_step)
-        self._model = DisturbedQuadrotor(model)
         self._nx = model.nx
         self._nu = model.nu
+
+        self._x = np.zeros((data_len+1, model.nx))
+        self._x[0,:] = x0
+        self._u = np.zeros((data_len, model.nu))
+        self._k = 0
+
+        self._model = DisturbedQuadrotor(model)
         self._solver = self._init_solver(self._model, sim_step, control_step)
         atexit.register(self._clear_files)
 
@@ -32,19 +41,79 @@ class AcadosPlant():
     @property
     def nu(self) -> int:
         return self._nu
-
+        
 
     def update(
         self,
         x: np.ndarray,
         u: np.ndarray,
-        d: np.ndarray,
+        d=np.zeros(12),
         timer=False,
+    ) -> np.ndarray:
+        u_bd = self._bound_u(u)
+        self._solve(x, u_bd, d, timer)
+        x = self._solver.get("x")[:self._nx]
+        x_bd = self._bound_x(x)
+        self._update_data(x_bd, u_bd)
+        return x_bd
+
+
+    def _update_data(
+        self,
+        x: np.ndarray,
+        u: np.ndarray
+    ) -> None:
+        self._u[self._k,:] = u
+        self._k += 1
+        self._x[self._k] = x
+
+
+    def get_xdata(
+        self,
+        visuals=True
+    ) -> np.ndarray:
+        if visuals:
+            self._plot_data()
+        return self._x
+
+
+    def get_udata(self) -> np.ndarray:
+        return self._u
+
+
+    def _plot_data(self) -> None:
+        fig = plt.figure(figsize=(9,8))
+        ax = fig.add_subplot(projection="3d")
+
+        ax.set_xlabel(r"$\bf{x}$", fontsize=12)
+        ax.yaxis.set_rotate_label(False)
+        ax.set_ylabel(r"$\bf{y}$", fontsize=12)
+        ax.zaxis.set_rotate_label(False)
+        ax.set_zlabel(r"$\bf{z}$", fontsize=12)
+
+        x = self._x[:,0]
+        y = self._x[:,1]
+        z = self._x[:,2]
+
+        ax.scatter(x[0], y[0], z[0], c="b")
+        ax.scatter(x[-1], y[-1], z[-1], c="g")
+        ax.plot(x, y, z, c="r")
+        plt.show()
+
+
+    def _bound_u(
+        self,
+        u: np.ndarray
     ) -> np.ndarray:
         u = np.where(u>self._model.u_min, u, self._model.u_min)
         u = np.where(u<self._model.u_max, u, self._model.u_max)
-        self._solve(x, u, d, timer)
-        x = self._solver.get("x")[:self._nx]
+        return u
+
+
+    def _bound_x(
+        self,
+        x: np.ndarray
+    ) -> np.ndarray:
         if x[2] < 0:
             x[2] = 0
             if x[8] < 0:
