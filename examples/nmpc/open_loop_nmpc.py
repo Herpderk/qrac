@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 from qrac.models import Crazyflie
-from qrac.control.nmpc import NMPC
+from qrac.control import NMPC
 import numpy as np
 
 

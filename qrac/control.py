@@ -9,11 +9,13 @@ May need to install qpOASES version 3.1 as well.
 #!/usr/bin/python3
 
 from acados_template import AcadosOcpSolver, AcadosOcp
+import casadi as cs
 import numpy as np
-from scipy.linalg import block_diag
+from scipy.linalg import block_diag, expm
 from scipy.interpolate import make_interp_spline
 import matplotlib.pyplot as plt
 import matplotlib
+import multiprocessing as mp
 import time
 from typing import List, Tuple
 import atexit
@@ -60,16 +62,13 @@ class NMPC:
         # deleting acados compiled files when script is terminated.
         atexit.register(self._clear_files)
 
-
     @property
     def dt(self) -> float:
         return self._dt
 
-
     @property
     def n_set(self) -> int:
         return self._N * self._nx
-
 
     def get_input(
         self,
@@ -84,7 +83,6 @@ class NMPC:
         nxt_ctrl = np.array(self._solver.get(0, "u"))
         return nxt_ctrl
 
-
     def get_state(
         self,
         x: np.ndarray,
@@ -97,7 +95,6 @@ class NMPC:
         self._solve(x, xset, timer)
         nxt_state = np.array(self._solver.get(1, "x"))
         return nxt_state
-
 
     def get_trajectory(
         self,
@@ -118,7 +115,6 @@ class NMPC:
         if visuals:
             self._vis_plots(opt_xs, opt_us)
         return opt_xs, opt_us
-
 
     def _solve(
         self,
@@ -150,7 +146,6 @@ class NMPC:
         if timer:
             et = time.perf_counter()
             print(f"mpc runtime: {et - st}")
-
 
     def _init_solver(
         self,
@@ -246,7 +241,6 @@ class NMPC:
             solver = AcadosOcpSolver(ocp,  json_file=name)
         return solver
 
-
     def _vis_plots(
         self,
         traj: np.ndarray,
@@ -291,7 +285,6 @@ class NMPC:
             ax.label_outer()
         plt.show()
 
-
     def _plot_trajectory(
         self,
         ax: matplotlib.axes,
@@ -308,7 +301,6 @@ class NMPC:
             ax.plot(x_interp, y_interp, label=legend[i])
         ax.legend()
 
-
     def _get_interpolation(
         self,
         Xs: np.ndarray,
@@ -319,7 +311,6 @@ class NMPC:
         interp_x = np.linspace(Xs.min(), Xs.max(), N)
         interp_y = spline_func(interp_x)
         return interp_y
-
 
     def _assert(
         self,
@@ -358,7 +349,6 @@ class NMPC:
             raise ValueError(
                 "Please input the number of shooting nodes as an integer!")
 
-
     def _clear_files(self) -> None:
         """
         Clean up the acados generated files.
@@ -371,3 +361,311 @@ class NMPC:
             os.remove("acados_mpc.json")
         except:
             print("failed to delete acados_mpc.json")
+
+
+def npify(arr_like) -> np.ndarray:
+    return np.array(arr_like[:])
+
+
+class AdaptiveNMPC():
+    def __init__(
+        self,
+        model: Quadrotor,
+        estimator,
+        Q: np.ndarray,
+        R: np.ndarray,
+        u_min: np.ndarray,
+        u_max: np.ndarray,
+        time_step: float,
+        num_nodes: int,
+        real_time: bool,
+        rti: bool,
+        nlp_tol=10**-6,
+        nlp_max_iter=10,
+        qp_max_iter=10,
+    ) -> None:
+        self._nx = model.nx
+        self._nu = model.nu
+        self._N = num_nodes
+        self._rt = real_time
+
+        self._est = estimator
+        if estimator.is_nonlinear:
+            model_aug = ParameterizedQuadrotor(model)
+        else:
+            model_aug = AffineQuadrotor(model)
+        self._np = model_aug.np
+        Q_aug = self._augment_cost(Q)
+        self._mpc = NMPC(
+            model=model_aug, Q=Q_aug, R=R,
+            u_min=u_min, u_max=u_max,
+            time_step=time_step,
+            num_nodes=num_nodes, rti=rti,
+            nlp_tol=nlp_tol, nlp_max_iter=nlp_max_iter,
+            qp_max_iter=qp_max_iter
+        )
+
+        self._p = mp.Array("f", model_aug.get_parameters())
+        self._x = mp.Array("f", np.zeros(model.nx))
+        self._u = mp.Array("f", np.zeros(self._nu))
+        self._timer = mp.Value("b", False)
+        if real_time:
+            self._run_flag = mp.Value("b", True)
+
+    @property
+    def dt(self) -> float:
+        return self._mpc.dt
+
+    @property
+    def n_set(self) -> int:
+        return self._N * self._nx
+
+    def start(self) -> None:
+        if not self._rt:
+            print("Cannot call 'start' outside of real-time mode!")
+        else:
+            proc = mp.Process(target=self._param_proc, args=[])
+            proc.start()
+
+    def stop(self) -> None:
+        if not self._rt:
+            print("Cannot call 'stop' outside of real-time mode!")
+        else:
+            self._run_flag.value = False
+
+    def get_input(
+        self,
+        x: np.ndarray,
+        xset: np.ndarray,
+        timer=False,
+    ) -> np.ndarray:
+        self._x[:] = x
+        self._timer.value = timer
+        if not self._rt: self._get_param()
+
+        x_aug = np.concatenate((x, npify(self._p)))
+        xset_aug = self._augment_xset(xset)
+        self._u[:] = self._mpc.get_input(x_aug, xset_aug, timer)
+        return npify(self._u)
+
+    def _augment_xset(
+        self,
+        xset: np.ndarray
+    ) -> np.ndarray:
+        nx = self._nx
+        xset_aug = np.zeros(self._N * (nx+self._np))
+        for k in range(self._N):
+            xset_aug[k*(nx+self._np) : k*(nx+self._np) + nx] =\
+                xset[k*nx : k*nx + nx]
+        return xset_aug
+
+    def _param_proc(self) -> None:
+        param_proc = mp.Process(target=self._run_param_est)
+        param_proc.start()
+        param_proc.join()
+        print("\nParameter Estimator successfully stopped.")
+
+    def _run_param_est(self) -> None:
+        st = time.perf_counter()
+        while self._run_flag.value:
+            et = time.perf_counter()
+            if et - st >= self.dt:
+                st = et
+                self._get_param()
+
+    def _get_param(self) -> None:
+        param = self._est.get_param(
+            x=npify(self._x),
+            u=npify(self._u),
+            param=npify(self._p),
+            timer=self._timer.value
+        )
+        self._p[:] = param
+
+    def _augment_cost(
+        self,
+        Q: np.ndarray,
+    ) -> np.ndarray:
+        Q_aug = block_diag(
+            Q, np.zeros((self._np, self._np))
+        )
+        return Q_aug
+
+
+class L1Augmentation():
+    def __init__(
+        self,
+        model: Quadrotor,
+        control_ref,
+        adapt_gain: float,
+        bandwidth: float,
+    ) -> None:
+        self._z_idx = 6
+        self._nz = 6
+        self._nm = 4
+        self._num = 2
+        self._assert(model, control_ref, adapt_gain, bandwidth,)
+
+        self._ul1 = np.zeros(model.nu)
+        self._z = np.zeros(self._nz)
+        self._d_m = np.zeros(self._nm)
+        self._d_um = np.zeros(self._num)
+        self._f, self._g_m, self._g_um = self._get_dynamics_funcs(model)
+        self._Am = -np.array([
+            [1, 0, 0, 0, 0, 0],
+            [0, 1, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 1, 0],
+            [0, 0, 0, 0, 0, 1],
+        ])
+        self._a_gain = adapt_gain
+        self._adapt_exp, self._adapt_mat, self._filter_exp = \
+            self._get_l1_const(bandwidth, control_ref.dt)
+
+        self._model = model
+        self._ctrl_ref = control_ref
+        self._dt = control_ref.dt
+
+        self._x = np.zeros(model.nx)
+        self._xset = np.zeros(control_ref.n_set)
+        self._u_ref = np.zeros(model.nu)
+
+    @property
+    def dt(self) -> float:
+        return self._dt
+
+    @property
+    def n_set(self) -> Tuple[int]:
+        return self._ctrl_ref.n_set
+
+    def get_input(
+        self,
+        x: np.ndarray,
+        xset: np.ndarray,
+        timer=False,
+    ) -> np.ndarray:
+        assert x.shape[0] == self._model.nx
+        assert xset.shape[0] == self._ctrl_ref.n_set
+        uref = self._ctrl_ref.get_input(x=x, xset=xset, timer=timer)
+        ul1 = self._get_l1_input(x=x, uref=uref, timer=timer)
+        u = uref + ul1
+        return u
+
+    def _get_l1_input(
+        self,
+        x: np.ndarray,
+        uref: np.ndarray,
+        timer: bool
+    ) -> None:
+        st = time.perf_counter()
+        z_err, g_m, g_um = self._predictor(x=x, uref=uref)
+        d_m = self._adaptation(z_err=z_err, g_m=g_m, g_um=g_um)
+        ul1 = self._control_law(d_m=d_m)
+        if timer:
+            print(f"L1 runtime: {time.perf_counter() - st}")
+        return ul1
+
+    def _predictor(
+        self,
+        x: np.ndarray,
+        uref: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        z_err = np.array(
+            self._z - x[self._z_idx : self._z_idx+self._nz]
+        )
+        f = np.array(self._f(x, uref)).reshape(self._nz)
+        g_m = np.array(self._g_m(x))
+        g_um = np.array(self._g_um(x))
+        self._z += self._dt * (self._Am @ z_err \
+            + f + g_m@(self._ul1 + self._d_m) \
+            + g_um @ self._d_um)
+        return z_err, g_m, g_um
+
+    def _adaptation(
+        self,
+        z_err,
+        g_m: np.ndarray,
+        g_um: np.ndarray
+    ) -> np.ndarray:
+        I = np.eye(self._nz)
+        G = np.block([g_m, g_um])
+        mu = self._adapt_exp @ z_err
+        adapt = self._a_gain * -I @ np.linalg.inv(G) @ self._adapt_mat @ mu
+        self._d_m = adapt[: self._nm]
+        self._d_um = adapt[self._nm : self._nm + self._num]
+        return self._d_m
+
+    def _control_law(
+        self,
+        d_m: np.ndarray
+    ) -> None:
+        self._ul1 = self._filter_exp * self._ul1 \
+            - (1-self._filter_exp)*d_m
+        return self._ul1
+
+    def _get_l1_const(
+        self,
+        bandwidth: float,
+        time_step: float
+    ) -> Tuple[np.ndarray]:
+        adapt_exp = expm(self._Am*time_step)
+        adapt_mat = np.linalg.inv(self._Am) @ (adapt_exp - np.eye(self._nz))
+        filter_exp = np.exp(-bandwidth*time_step)
+        return adapt_exp, adapt_mat, filter_exp
+
+    def _get_dynamics_funcs(
+        self,
+        model: Quadrotor,
+    ) -> Tuple[cs.Function]:
+        # rotation matrix from body frame to inertial frame
+        b1 = model.R[:,0]
+        b2 = model.R[:,1]
+        b3 = model.R[:,2]
+
+        f = model.xdot[6:12]
+        g_m = cs.SX(cs.vertcat(
+            b3/model.m @ cs.SX.ones(1,4),
+            cs.inv(model.J) @ model.B
+        ))
+        g_um = cs.SX(cs.vertcat(
+            cs.horzcat(b1, b2)/model.m,
+            cs.SX.zeros(3,2)
+        ))
+        f_func = cs.Function("f", [model.x, model.u], [f])
+        g_m_func = cs.Function("g_m", [model.x], [g_m])
+        g_um_func = cs.Function("g_um", [model.x], [g_um])
+        return f_func, g_m_func, g_um_func
+
+    def _assert(
+        self,
+        model: Quadrotor,
+        control_ref,
+        adapt_gain: float,
+        bandwidth: float,
+    ) -> None:
+        if type(model) != Quadrotor:
+            raise TypeError(
+                "The inputted model must be of type 'NonlinearQuadrotor'!")
+        try:
+            control_ref.get_input
+        except AttributeError:
+            raise NotImplementedError(
+                "Please implement a 'get_input' method in your reference controller class!")
+        try:
+            control_ref.dt
+        except AttributeError:
+            raise NotImplementedError(
+                "Please implement a 'dt' attribute in your controller class!")
+        try:
+            control_ref.n_set
+        except AttributeError:
+            raise NotImplementedError(
+                "Please implement a 'n_set' attribute in your controller class!")
+
+        if type(adapt_gain) != int and type(adapt_gain) != float:
+            raise TypeError(
+                "Please input the adaptation gain as an integer or float!")
+        if type(bandwidth) != int and type(bandwidth) != float:
+            raise TypeError(
+                "Please input the bandwidth as an integer or float!")

@@ -3,8 +3,8 @@
 import numpy as np
 from qrac.models import Quadrotor, Crazyflie
 from qrac.trajectory import Circle
-from qrac.control.nmpc import NMPC
-from qrac.control.l1_aug import L1Augmentation
+from qrac.control import NMPC
+from qrac.control import L1Augmentation
 from qrac.sim import MinimalSim
 
 

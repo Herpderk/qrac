@@ -2,7 +2,7 @@
 
 from qrac.models import Crazyflie, Quadrotor, ParameterizedQuadrotor
 from qrac.trajectory import Circle
-from qrac.control.param_nmpc import ParameterAdaptiveNMPC
+from qrac.control import AdaptiveNMPC
 from qrac.estimation import MHE
 from qrac.sim import MinimalSim
 import numpy as np
@@ -62,7 +62,7 @@ def run():
     )
 
     # init mpc
-    adaptive_mpc = ParameterAdaptiveNMPC(
+    adaptive_mpc = AdaptiveNMPC(
         model=inacc, estimator=mhe, Q=Q, R=R,
         u_min=inacc.u_min, u_max=inacc.u_max, time_step=CTRL_T,
         num_nodes=NODES, real_time=False, rti=True,

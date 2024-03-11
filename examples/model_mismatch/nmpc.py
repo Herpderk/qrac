@@ -2,7 +2,7 @@
 
 from qrac.models import Crazyflie, Quadrotor
 from qrac.trajectory import Circle
-from qrac.control.nmpc import NMPC
+from qrac.control import NMPC
 from qrac.sim import MinimalSim
 import numpy as np
 
