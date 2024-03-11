@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from acados_template import AcadosOcpSolver, AcadosOcp, AcadosModel
+from acados_template import AcadosOcpSolver, AcadosOcp
 import casadi as cs
 import numpy as np
 from scipy.linalg import block_diag
