@@ -14,9 +14,9 @@ def main():
 
     # true plant model
     m_true = 1.5 * model_inacc.m
-    Ixx_true = 60 * model_inacc.Ixx
-    Iyy_true = 60 * model_inacc.Iyy
-    Izz_true = 60 * model_inacc.Izz
+    Ixx_true = 50 * model_inacc.Ixx
+    Iyy_true = 50 * model_inacc.Iyy
+    Izz_true = 50 * model_inacc.Izz
     Ax_true = 0
     Ay_true = 0
     Az_true = 0
@@ -34,16 +34,16 @@ def main():
     R = np.diag([0, 0, 0, 0])
     u_min = model_inacc.u_min
     u_max = model_inacc.u_max
-    mpc_T = 0.006
+    mpc_T = 0.005
     num_nodes = 100
     rti = True
-    real_time = False
     mpc = NMPC(
         model=model_inacc, Q=Q, R=R, u_max=u_max, u_min=u_min,
-        time_step=mpc_T, num_nodes=num_nodes, rti=rti,)
+        time_step=mpc_T, num_nodes=num_nodes, rti=rti,
+        nlp_max_iter=1, qp_max_iter=5)
 
     # initialize simulator plant
-    sim_T = mpc_T / 20
+    sim_T = mpc_T / 10
     plant = AcadosPlant(
         model=model_acc, sim_step=sim_T, control_step=mpc_T)
 
