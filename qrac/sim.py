@@ -7,6 +7,7 @@ import time
 import atexit
 import os
 import shutil
+from typing import List
 from qrac.models import Quadrotor, DisturbedQuadrotor
 
 
@@ -18,10 +19,14 @@ class MinimalSim():
         sim_step: float,
         control_step: float,
         data_len: int,
+        axes_min=[-5,-5,0],
+        axes_max=[5,5,10]
     ) -> None:
         self._assert(model, sim_step, control_step)
         self._nx = model.nx
         self._nu = model.nu
+        self._axmin = axes_min
+        self._axmax = axes_max
 
         self._x = np.zeros((data_len+1, model.nx))
         self._x[0,:] = x0
@@ -32,17 +37,14 @@ class MinimalSim():
         self._solver = self._init_solver(self._model, sim_step, control_step)
         atexit.register(self._clear_files)
 
-
     @property
     def nx(self) -> int:
         return self._nx
-
 
     @property
     def nu(self) -> int:
         return self._nu
         
-
     def update(
         self,
         x: np.ndarray,
@@ -57,7 +59,6 @@ class MinimalSim():
         self._update_data(x_bd, u_bd)
         return x_bd
 
-
     def _update_data(
         self,
         x: np.ndarray,
@@ -67,7 +68,6 @@ class MinimalSim():
         self._k += 1
         self._x[self._k] = x
 
-
     def get_xdata(
         self,
         visuals=True
@@ -76,14 +76,16 @@ class MinimalSim():
             self._plot_data()
         return self._x
 
-
     def get_udata(self) -> np.ndarray:
         return self._u
-
 
     def _plot_data(self) -> None:
         fig = plt.figure(figsize=(9,8))
         ax = fig.add_subplot(projection="3d")
+
+        ax.set_xlim(self._axmin[0], self._axmax[0])
+        ax.set_ylim(self._axmin[1], self._axmax[1])
+        ax.set_zlim(self._axmin[2], self._axmax[2])
 
         ax.xaxis.set_rotate_label(False)
         ax.set_xlabel(r"$\bf{x}$ (m)", fontsize=12)
