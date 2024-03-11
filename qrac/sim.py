@@ -85,11 +85,12 @@ class MinimalSim():
         fig = plt.figure(figsize=(9,8))
         ax = fig.add_subplot(projection="3d")
 
-        ax.set_xlabel(r"$\bf{x}$", fontsize=12)
+        ax.xaxis.set_rotate_label(False)
+        ax.set_xlabel(r"$\bf{x}$ (m)", fontsize=12)
         ax.yaxis.set_rotate_label(False)
-        ax.set_ylabel(r"$\bf{y}$", fontsize=12)
+        ax.set_ylabel(r"$\bf{y}$ (m)", fontsize=12)
         ax.zaxis.set_rotate_label(False)
-        ax.set_zlabel(r"$\bf{z}$", fontsize=12)
+        ax.set_zlabel(r"$\bf{z}$ (m)", fontsize=12)
 
         x = self._x[:,0]
         y = self._x[:,1]
@@ -138,7 +139,7 @@ class MinimalSim():
         if status != 0:
             raise Exception(f"acados returned status {status}.")
         if timer:
-            print(f"plant runtime: {time.perf_counter() - st}")
+            print(f"sim runtime: {time.perf_counter() - st}")
 
 
     def _init_solver(
