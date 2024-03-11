@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 from qrac.models import Crazyflie, Quadrotor, AffineQuadrotor
-from qrac.trajectory import Circle
+from qrac.trajectory import Circle, LemniScate
 from qrac.control import AdaptiveNMPC
 from qrac.estimation import SetMembershipEstimator, LMS
 from qrac.sim import MinimalSim
@@ -17,8 +17,8 @@ def run():
 
     # estimator settings
     U_GAIN = 1000
-    P_TOL = 0.1*np.ones(10)
-    D_MIN = -0.1*np.ones(12)
+    P_TOL = 0.01*np.ones(10)
+    D_MIN = -0.01*np.ones(12)
     D_MAX = -D_MIN
 
     # sim settings
@@ -77,7 +77,8 @@ def run():
     # init sim
     nx = inacc.nx
     x0 = np.zeros(nx)
-    x0[0] = 8
+    x0[0] = 4
+    x0[1] = 4
     steps = int(round(SIM_TIME / CTRL_T))
     sim = MinimalSim(
         x0=x0, model=acc,
@@ -87,7 +88,8 @@ def run():
 
 
     # define a circular trajectory
-    traj = Circle(v=4, r=8, alt=8)
+    #traj = Circle(v=4, r=8, alt=8)
+    traj = LemniScate(a=x0[0], b=0.4, axes=[0,1], translation=[0,0,4])
 
 
     # run for predefined number of steps
