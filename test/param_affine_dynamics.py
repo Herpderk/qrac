@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
-from qrac.dynamics import Crazyflie, ParameterAffineQuadrotor
-from qrac.control.nmpc import NMPC
+from qrac.models import Crazyflie, AffineQuadrotor
+from qrac.control import NMPC
 import casadi as cs
 import numpy as np
 
@@ -15,10 +15,10 @@ def main():
     u_min = np.zeros(4)
     control_T = 0.05
     num_nodes = 200
-    rt = False
+    rti = False
     mpc = NMPC(
         model=model, Q=Q, R=R, u_max=u_max, u_min=u_min,
-        time_step=control_T, num_nodes=num_nodes, real_time=rt,)
+        time_step=control_T, num_nodes=num_nodes, rti=rti,)
 
     x0 = np.zeros(12)
     x_set = np.tile(
@@ -28,7 +28,7 @@ def main():
 
     # Let's confirm that the same sequence of control inputs will yield
     # the same trajectory in the augmented dynamics
-    model = ParameterAffineQuadrotor(model)
+    model = AffineQuadrotor(model)
     param = np.array([
         1/model.m , 0, 0, 0,
         1/model.Ixx, 1/model.Iyy, 1/model.Izz,
