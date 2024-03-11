@@ -1,62 +1,61 @@
 #!/usr/bin/python3
 
-from qrac.models import Crazyflie
+from qrac.models import Crazyflie, Quadrotor
 from qrac.trajectory import Circle
 from qrac.control.nmpc import NMPC
-from qrac.sim.acados_plant import AcadosPlant
-from qrac.sim.minimal_sim import MinimalSim
+from qrac.sim import MinimalSim
 import numpy as np
 
 
-def main():
-    # get dynamics model
-    model = Crazyflie(Ax=0, Ay=0, Az=0)
-
-    # initialize controller
+def run():
+    SIM_TIME = 30
+    SIM_T = 0.0005
+    CTRL_T = 0.005
+    NODES = 75
     Q = np.diag([40,40,40, 10,10,10, 20,20,20, 10,10,10])
     R = np.diag([0, 0, 0, 0])
-    u_max = model.u_max
-    u_min = np.zeros(4)
-    mpc_T = 0.006
-    num_nodes = 100
-    rti = True
+
+    # inaccurate model
+    model = Crazyflie(Ax=0, Ay=0, Az=0)
+
+    # initialize mpc
     mpc = NMPC(
-        model=model, Q=Q, R=R, u_max=u_max, u_min=u_min, \
-        time_step=mpc_T, num_nodes=num_nodes, rti=rti, )
+        model=model, Q=Q, R=R,
+        u_min=model.u_min, u_max=model.u_max, 
+        time_step=CTRL_T, num_nodes=NODES,
+        rti=True, nlp_max_iter=1, qp_max_iter=5
+    )
 
-    # initialize simulator plant
-    sim_T = mpc_T / 10
-    plant = AcadosPlant(
-        model=model, sim_step=sim_T, control_step=mpc_T)
-
-    # initialize simulator and bounds
-    lb_pose = [-10, -10, 0]
-    ub_pose = [10, 10, 10]
+    # initialize sim
+    nx = model.nx
+    x0 = np.zeros(nx)
+    x0[0] = 8
+    steps = int(round(SIM_TIME / CTRL_T))
     sim = MinimalSim(
-        plant=plant, controller=mpc,
-        lb_pose=lb_pose, ub_pose=ub_pose,)
+        x0=x0, model=model,
+        sim_step=SIM_T, control_step=CTRL_T,
+        data_len=steps
+    )
 
     # define a circular trajectory
-    traj = Circle(v=4, r=4, alt=4)
+    traj = Circle(v=4, r=8, alt=8)
 
-    # Run the sim for N control loops
-    x0 = np.array([4,0,0, 0,0,0, 0,0,0, 0,0,0])
-    N = int(round(30 / mpc_T))      # 30 seconds worth of control loops
-    sim.start(x0=x0, max_steps=N, verbose=True)
+    x = x0
+    xset = np.zeros(nx*NODES)
+    for k in range(steps):
+        t = k*CTRL_T
+        for n in range(NODES):
+            xset[n*nx : n*nx + nx] = traj.get_setpoint(t)
+            t += CTRL_T
+        u = mpc.get_input(x=x, xset=xset, timer=True)
+        x = sim.update(x=x, u=u, timer=True)
 
-    # track the given trajectory
-    xset = np.zeros(mpc.n_set)
-    nx = model.nx
-    dt = mpc.dt
-    t0 = sim.timestamp
-    while sim.is_alive:
-        t = sim.timestamp
-        for k in range(num_nodes):
-            xset[k*nx : k*nx + nx] = \
-                np.array(traj.get_setpoint(t - t0))
-            t += dt
-        sim.update_setpoint(xset=xset)
+        print(f"\nu: {u}")
+        print(f"x: {x}")
+        print(f"sim time: {(k+1)*CTRL_T}")
+
+    xdata = sim.get_xdata()
 
 
 if __name__=="__main__":
-    main()
+    run()

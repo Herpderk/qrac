@@ -3,77 +3,87 @@
 from qrac.models import Crazyflie, Quadrotor
 from qrac.trajectory import Circle
 from qrac.control.nmpc import NMPC
-from qrac.sim.acados_plant import AcadosPlant
-from qrac.sim.minimal_sim import MinimalSim
+from qrac.sim import MinimalSim
 import numpy as np
 
 
-def main():
-    # inaccurate model
-    model_inacc = Crazyflie(Ax=0, Ay=0, Az=0)
+def run():
+    # mpc settings
+    CTRL_T = 0.005
+    NODES = 75
+    Q = np.diag([1,1,1, 2,2,2, 1,1,1, 2,2,2,])
+    R = np.diag([0, 0, 0, 0])
 
-    # true plant model
-    m_true = 1.5 * model_inacc.m
-    Ixx_true = 50 * model_inacc.Ixx
-    Iyy_true = 50 * model_inacc.Iyy
-    Izz_true = 50 * model_inacc.Izz
+    # sim settings
+    SIM_TIME = 30
+    SIM_T = CTRL_T / 10
+
+    # inaccurate model
+    inacc = Crazyflie(Ax=0, Ay=0, Az=0)
+
+    # true model
+    m_true = 1.5 * inacc.m
+    Ixx_true = 50 * inacc.Ixx
+    Iyy_true = 50 * inacc.Iyy
+    Izz_true = 50 * inacc.Izz
     Ax_true = 0
     Ay_true = 0
     Az_true = 0
-    xB_true = model_inacc.xB
-    yB_true = model_inacc.yB
-    k_true = model_inacc.k
-    u_min_true = model_inacc.u_min
-    u_max_true = model_inacc.u_max
-    model_acc = Quadrotor(
+    xB_true =inacc.xB
+    yB_true =inacc.yB
+    k_true =inacc.k
+    u_min_true =inacc.u_min
+    u_max_true =inacc.u_max
+    acc = Quadrotor(
         m_true, Ixx_true, Iyy_true, Izz_true,
         Ax_true, Ay_true, Az_true, xB_true, yB_true, k_true, u_min_true, u_max_true)
 
-    # initialize mpc
-    Q = np.diag([40,40,40, 10,10,10, 20,20,20, 10,10,10])
-    R = np.diag([0, 0, 0, 0])
-    u_min = model_inacc.u_min
-    u_max = model_inacc.u_max
-    mpc_T = 0.005
-    num_nodes = 100
-    rti = True
+
+    # init mpc
     mpc = NMPC(
-        model=model_inacc, Q=Q, R=R, u_max=u_max, u_min=u_min,
-        time_step=mpc_T, num_nodes=num_nodes, rti=rti,
-        nlp_max_iter=1, qp_max_iter=5)
+        model=inacc, Q=Q, R=R,
+        u_min=inacc.u_min, u_max=inacc.u_max, 
+        time_step=CTRL_T, num_nodes=NODES,
+        rti=True, nlp_max_iter=1, qp_max_iter=5
+    )
 
-    # initialize simulator plant
-    sim_T = mpc_T / 10
-    plant = AcadosPlant(
-        model=model_acc, sim_step=sim_T, control_step=mpc_T)
 
-    # initialize simulator
-    lb_pose = [-10, -10, 0]
-    ub_pose = [10, 10, 10]
+    # init sim
+    nx = inacc.nx
+    x0 = np.zeros(nx)
+    x0[0] = 8
+    steps = int(round(SIM_TIME / CTRL_T))
     sim = MinimalSim(
-        plant=plant, controller=mpc, lb_pose=lb_pose, ub_pose=ub_pose,)
+        x0=x0, model=acc,
+        sim_step=SIM_T, control_step=CTRL_T,
+        data_len=steps
+    )
 
-     # define a circular trajectory
+
+    # define a circular trajectory
     traj = Circle(v=4, r=8, alt=8)
 
-    # Run the sim for N control loops
-    x0 = np.array([8,0,0, 0,0,0, 0,0,0, 0,0,0])
-    N = int(round(30 / mpc_T))      # 30 seconds worth of control loops
-    sim.start(x0=x0, max_steps=N, verbose=True)
 
-    # track the given trajectory
-    xset = np.zeros(mpc.n_set)
-    nx = model_inacc.nx
-    dt = mpc.dt
-    t0 = sim.timestamp
-    while sim.is_alive:
-        t = sim.timestamp
-        for k in range(num_nodes):
-            xset[k*nx : k*nx + nx] = \
-                np.array(traj.get_setpoint(t - t0))
-            t += dt
-        sim.update_setpoint(xset=xset)
+    # run for predefined number of steps
+    x = x0
+    xset = np.zeros(nx*NODES)
+
+    for k in range(steps):
+        t = k*CTRL_T
+        for n in range(NODES):
+            xset[n*nx : n*nx + nx] = traj.get_setpoint(t)
+            t += CTRL_T
+        u = mpc.get_input(x=x, xset=xset, timer=True)
+        x = sim.update(x=x, u=u, timer=True)
+
+        print(f"\nu: {u}")
+        print(f"x: {x}")
+        print(f"sim time: {(k+1)*CTRL_T}")
+
+
+    # get state data and plot
+    xdata = sim.get_xdata()
 
 
 if __name__=="__main__":
-    main()
+    run()
