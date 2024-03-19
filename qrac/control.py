@@ -74,12 +74,15 @@ class NMPC:
         self,
         x: np.ndarray,
         xset: np.ndarray,
+        uset=[],
         timer=False,
     ) -> np.ndarray:
         """
         Get the first control input from the optimization.
         """
-        self._solve(x, xset, timer)
+        if not len(uset):
+            uset = np.tile(self._u_avg, self._N)
+        self._solve(x=x, xset=xset, uset=uset, timer=timer)
         nxt_ctrl = np.array(self._solver.get(0, "u"))
         return nxt_ctrl
 
@@ -87,12 +90,15 @@ class NMPC:
         self,
         x: np.ndarray,
         xset: np.ndarray,
+        uset=[],
         timer=False,
     ) -> np.ndarray:
         """
         Get the next state from the optimization.
         """
-        self._solve(x, xset, timer)
+        if not len(uset):
+            uset = np.tile(self._u_avg, self._N)
+        self._solve(x=x, xset=xset, uset=uset, timer=timer)
         nxt_state = np.array(self._solver.get(1, "x"))
         return nxt_state
 
@@ -100,13 +106,16 @@ class NMPC:
         self,
         x: np.ndarray,
         xset: np.ndarray,
+        uset=[],
         timer=False,
         visuals=False,
     ) -> Tuple[np.ndarray]:
         """
         Get the next state from the optimization.
         """
-        self._solve(x, xset, timer)
+        if not len(uset):
+            uset = np.tile(self._u_avg, self._N)
+        self._solve(x=x, xset=xset, uset=uset, timer=timer)
         opt_xs = np.zeros((self._N, self._nx))
         opt_us = np.zeros((self._N, self._nu))
         for k in range(self._N):
@@ -120,6 +129,7 @@ class NMPC:
         self,
         x: np.ndarray,
         xset: np.ndarray,
+        uset: np.ndarray,
         timer: bool,
     ) -> None:
         """
@@ -129,6 +139,7 @@ class NMPC:
         if timer: st = time.perf_counter()
         assert x.shape[0] == self._nx
         assert xset.shape[0] == self.n_set
+        assert uset.shape[0] == self._nu * self._N
 
         # bound x to initial state
         self._solver.set(0, "lbx", x)
@@ -137,7 +148,9 @@ class NMPC:
         # the reference input will be the hover input
         for k in range(self._N):
             yref = np.concatenate(
-                (xset[k*self._nx : k*self._nx + self._nx], self._u_avg))
+                (xset[k*self._nx : k*self._nx + self._nx],
+                 uset[k*self._nu : k*self._nu + self._nu])
+            )
             self._solver.set(k, "yref", yref)
         
         self._solver.solve()
@@ -437,6 +450,7 @@ class AdaptiveNMPC():
         self,
         x: np.ndarray,
         xset: np.ndarray,
+        uset=[],
         timer=False,
     ) -> np.ndarray:
         self._x[:] = x
@@ -445,7 +459,9 @@ class AdaptiveNMPC():
 
         x_aug = np.concatenate((x, npify(self._p)))
         xset_aug = self._augment_xset(xset)
-        self._u[:] = self._mpc.get_input(x_aug, xset_aug, timer)
+        self._u[:] = self._mpc.get_input(
+            x=x_aug, xset=xset_aug, uset=uset, timer=timer
+        )
         return npify(self._u)
 
     def _augment_xset(
@@ -543,11 +559,12 @@ class L1Augmentation():
         self,
         x: np.ndarray,
         xset: np.ndarray,
+        uset=[],
         timer=False,
     ) -> np.ndarray:
         assert x.shape[0] == self._model.nx
         assert xset.shape[0] == self._ctrl_ref.n_set
-        uref = self._ctrl_ref.get_input(x=x, xset=xset, timer=timer)
+        uref = self._ctrl_ref.get_input(x=x, xset=xset, uset=uset, timer=timer)
         ul1 = self._get_l1_input(x=x, uref=uref, timer=timer)
         u = uref + ul1
         return u
