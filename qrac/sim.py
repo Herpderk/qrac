@@ -3,18 +3,18 @@
 from acados_template import AcadosSim, AcadosSimSolver
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 import time
 import atexit
 import os
 import shutil
-from typing import List
+from typing import Tuple
 from qrac.models import Quadrotor, DisturbedQuadrotor
 
 
 class MinimalSim():
     def __init__(
         self,
-        x0: np.ndarray,
         model: Quadrotor,
         sim_step: float,
         control_step: float,
@@ -27,14 +27,18 @@ class MinimalSim():
         self._nu = model.nu
         self._axmin = axes_min
         self._axmax = axes_max
+        self._dt = control_step
+        self._len = data_len
+        self._anim = 40
 
-        self._x = np.zeros((data_len+1, model.nx))
-        self._x[0,:] = x0
+        self._x = np.zeros((data_len, model.nx))
         self._u = np.zeros((data_len, model.nu))
         self._k = 0
 
         self._model = DisturbedQuadrotor(model)
         self._solver = self._init_solver(self._model, sim_step, control_step)
+        self._fig, self._ax, self._line = self._init_fig()
+        #self._line = self._init_line()[0]
         atexit.register(self._clear_files)
 
     @property
@@ -44,7 +48,7 @@ class MinimalSim():
     @property
     def nu(self) -> int:
         return self._nu
-        
+
     def update(
         self,
         x: np.ndarray,
@@ -53,33 +57,61 @@ class MinimalSim():
         timer=False,
     ) -> np.ndarray:
         u_bd = self._bound_u(u)
-        self._solve(x, u_bd, d, timer)
-        x = self._solver.get("x")[:self._nx]
-        x_bd = self._bound_x(x)
+        self._solve(x=x, u=u_bd, d=d, timer=timer)
+        x_sol = self._solver.get("x")[:self._nx]
+        x_bd = self._bound_x(x_sol)
         self._update_data(x_bd, u_bd)
         return x_bd
 
-    def _update_data(
-        self,
-        x: np.ndarray,
-        u: np.ndarray
-    ) -> None:
-        self._u[self._k,:] = u
-        self._k += 1
-        self._x[self._k] = x
-
-    def get_xdata(
-        self,
-        visuals=True
-    ) -> np.ndarray:
-        if visuals:
-            self._plot_data()
+    def get_xdata(self) -> np.ndarray:
         return self._x
 
     def get_udata(self) -> np.ndarray:
         return self._u
 
-    def _plot_data(self) -> None:
+    def get_plot(self) -> None:
+        x = self._x[:,0]
+        y = self._x[:,1]
+        z = self._x[:,2]
+
+        self._ax.scatter(x[0], y[0], z[0], c="b")
+        self._ax.scatter(x[-1], y[-1], z[-1], c="g")
+        self._line.set_data_3d(x, y, z)
+        plt.show()
+        self._reset()
+
+    def get_animation(self, filename=""):
+        if self._k > self._len:
+            k = int(self._len/self._anim)
+        else:
+            k = int(self._k/self._anim)
+        anim = animation.FuncAnimation(
+            fig=self._fig, func=self._animate,
+            frames=k, interval=1000*self._dt
+        )
+        if len(filename):
+            print("Saving animation...")
+            anim.save(filename=filename, writer="pillow")
+            print("Animation saved.")
+        plt.show()
+        self._reset()
+
+    def _animate(self, i: int):
+        x = self._x[:,0]
+        y = self._x[:,1]
+        z = self._x[:,2]
+        self._line.set_data_3d(
+            x[:self._anim*i],
+            y[:self._anim*i],
+            z[:self._anim*i]
+        )
+        return (self._line)
+
+    def _reset(self) -> None:
+        self._ax.clear()
+        self._line = self._ax.plot([],[],[], c="r")[0]
+
+    def _init_fig(self) -> Tuple[plt.figure, plt.axes]:
         fig = plt.figure(figsize=(9,8))
         ax = fig.add_subplot(projection="3d")
 
@@ -94,15 +126,17 @@ class MinimalSim():
         ax.zaxis.set_rotate_label(False)
         ax.set_zlabel(r"$\bf{z}$ (m)", fontsize=12)
 
-        x = self._x[:,0]
-        y = self._x[:,1]
-        z = self._x[:,2]
+        line = ax.plot([],[],[], c="r")[0]
+        return fig, ax, line
 
-        ax.scatter(x[0], y[0], z[0], c="b")
-        ax.scatter(x[-1], y[-1], z[-1], c="g")
-        ax.plot(x, y, z, c="r")
-        plt.show()
-
+    def _update_data(
+        self,
+        x: np.ndarray,
+        u: np.ndarray
+    ) -> None:
+        self._x[self._k] = x
+        self._u[self._k,:] = u
+        self._k += 1
 
     def _bound_u(
         self,
@@ -111,7 +145,6 @@ class MinimalSim():
         u = np.where(u>self._model.u_min, u, self._model.u_min)
         u = np.where(u<self._model.u_max, u, self._model.u_max)
         return u
-
 
     def _bound_x(
         self,
@@ -122,7 +155,6 @@ class MinimalSim():
             if x[8] < 0:
                 x[8] = 0
         return x
-
 
     def _solve(
         self,
@@ -143,7 +175,6 @@ class MinimalSim():
         if timer:
             print(f"sim runtime: {time.perf_counter() - st}")
 
-
     def _init_solver(
         self,
         model: Quadrotor,
@@ -158,7 +189,6 @@ class MinimalSim():
         sim.solver_options.num_steps = int(round(control_step / sim_step))
         solver = AcadosSimSolver(sim)
         return solver
-
 
     def _assert(
         self,
@@ -178,7 +208,6 @@ class MinimalSim():
         if control_step < sim_step:
             raise ValueError(
                 "The control step should be greater than or equal to the simulator step!")        
-
 
     def _clear_files(self) -> None:
         """
