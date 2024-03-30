@@ -8,7 +8,7 @@ import numpy as np
 
 def run():
     # nmpc settings
-    PREDICT_TIME = 30
+    PREDICT_TIME = 20
     CTRL_T = 0.01
     NODES = int(round(PREDICT_TIME / CTRL_T))
     Q = np.diag([4,4,4, 1,1,1, 0,0,0, 0,0,0,])
@@ -20,8 +20,8 @@ def run():
     B = 1
     AXES = [0,1]
     TRANSLATE = [0,0,5]
-    xfilename = "xref.npy"
-    ufilename = "uref.npy"
+    xfilename = "/home/derek/dev/my-repos/qrac/examples/refs/lemniscate/xref.npy"
+    ufilename = "/home/derek/dev/my-repos/qrac/examples/refs/lemniscate/uref.npy"
 
 
     # init model
