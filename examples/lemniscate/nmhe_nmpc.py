@@ -1,8 +1,9 @@
 #!/usr/bin/python3
 
 import numpy as np
-from qrac.models import Crazyflie, Quadrotor
-from qrac.control import NMPC
+from qrac.models import Crazyflie, Quadrotor, ParameterizedQuadrotor
+from qrac.control import AdaptiveNMPC
+from qrac.estimation import MHE
 from qrac.sim import MinimalSim
 
 
@@ -13,11 +14,17 @@ def run():
     Q = np.diag([1,1,1, 1,1,1, 1,1,1, 1,1,1,])
     R = np.diag([0, 0, 0, 0])
 
-    # sim settings
-    SIM_T = CTRL_T / 10
-    D_RAND = np.array([
+    # estimator settings
+    Q_MHE = 1 * np.diag([1,1,1,1,1,1,1])
+    R_MHE = 1 * np.diag([1,1,1, 1,1,1, 1,1,1, 1,1,1])
+    NODES_MHE = 20
+    D_MAX = np.array([
         0,0,0, 0,0,0, 20,20,20, 10,10,10,
     ])
+    D_MIN = -D_MAX
+
+    # sim settings
+    SIM_T = CTRL_T / 10
 
     xfilename = "/home/derek/dev/my-repos/qrac/examples/refs/lemniscate/xref.npy"
     ufilename = "/home/derek/dev/my-repos/qrac/examples/refs/lemniscate/uref.npy"
@@ -31,7 +38,7 @@ def run():
     # inaccurate model
     inacc = Crazyflie(Ax=0, Ay=0, Az=0)
 
-    # true model
+    # true plant model
     m_true = 1.5 * inacc.m
     Ixx_true = 5 * inacc.Ixx
     Iyy_true = 5 * inacc.Iyy
@@ -39,24 +46,34 @@ def run():
     Ax_true = 0
     Ay_true = 0
     Az_true = 0
-    xB_true =inacc.xB
-    yB_true =inacc.yB
-    k_true =inacc.k
-    u_min_true =inacc.u_min
-    u_max_true =inacc.u_max
+    xB_true = inacc.xB
+    yB_true = inacc.yB
+    k_true = inacc.k
+    u_min_true = inacc.u_min
+    u_max_true = inacc.u_max
     acc = Quadrotor(
         m_true, Ixx_true, Iyy_true, Izz_true,
-        Ax_true, Ay_true, Az_true,
-        xB_true, yB_true, k_true,
-        u_min_true, u_max_true)
+        Ax_true, Ay_true, Az_true, xB_true, yB_true,
+        k_true, u_min_true, u_max_true)
 
+    # init estimator
+    p_min = np.zeros(7)
+    p_max = 2 * ParameterizedQuadrotor(acc).get_parameters()
+    mhe = MHE(
+        model=inacc, Q=Q_MHE, R=R_MHE,
+        param_min=p_min, param_max=p_max,
+        disturb_min=D_MIN, disturb_max=D_MAX,
+        time_step=CTRL_T, num_nodes=NODES_MHE,
+        rti=True, nonlinear=True,
+        nlp_tol=10**-6, nlp_max_iter=1, qp_max_iter=3
+    )
 
     # init mpc
-    nmpc = NMPC(
-        model=inacc, Q=Q, R=R,
-        u_min=inacc.u_min, u_max=inacc.u_max, 
-        time_step=CTRL_T, num_nodes=NODES,
-        rti=True, nlp_max_iter=1, qp_max_iter=5
+    anmpc = AdaptiveNMPC(
+        model=inacc, estimator=mhe, Q=Q, R=R,
+        u_min=inacc.u_min, u_max=inacc.u_max, time_step=CTRL_T,
+        num_nodes=NODES, real_time=False, rti=True,
+        nlp_tol=10**-6, nlp_max_iter=1, qp_max_iter=5
     )
 
 
@@ -87,13 +104,16 @@ def run():
             xset[:] = xref[k : k+NODES, :].flatten()
             uset[:nu*NODES] = uref[k : k+NODES, :].flatten()
 
-        u = nmpc.get_input(x=x, xset=xset, uset=uset, timer=True)
-        d = 2*D_RAND*(-0.5 + np.random.rand(12))
+        u = anmpc.get_input(x=x, xset=xset, uset=uset, timer=True)
+        d = 2*D_MAX*(-0.5 + np.random.rand(12))
         x = sim.update(x=x, u=u, d=d, timer=True)
 
         print(f"\nu: {u}")
         print(f"x: {x}")
         print(f"sim time: {(k+1)*CTRL_T}\n")
+    
+    print(f"acc params:\n{ParameterizedQuadrotor(acc).get_parameters()}")
+    print(f"inacc params:\n{ParameterizedQuadrotor(inacc).get_parameters()}")
 
 
     # calculate RMSE
@@ -109,8 +129,9 @@ def run():
 
     # plot
     sim.get_animation(
-        filename=f"/home/derek/Documents/qrac/lemniscate/nmpc_lem_{rmse}.gif"
+        filename=f"/home/derek/Documents/qrac/lemniscate/nmhe_lem_{rmse}.gif"
     )
+
 
 
 if __name__=="__main__":

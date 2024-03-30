@@ -1,11 +1,10 @@
 #!/usr/bin/python3
 
+import numpy as np
 from qrac.models import Crazyflie, Quadrotor, AffineQuadrotor
-from qrac.trajectory import LemniScate
 from qrac.control import AdaptiveNMPC
 from qrac.estimation import SetMembershipEstimator, MHE
 from qrac.sim import MinimalSim
-import numpy as np
 
 
 def run():
@@ -16,22 +15,25 @@ def run():
     R = np.diag([0, 0, 0, 0])
 
     # estimator settings
-    Q_MHE = 1*np.diag([1,1,1,1,1,1,1,1,1,1])
+    Q_MHE = 1 * np.diag([1,1,1,1,1,1,1,1,1,1])
     R_MHE = 1 * np.diag([1,1,1, 1,1,1, 1,1,1, 1,1,1])
-    NODES_MHE = 50
+    NODES_MHE = 20
     P_TOL = 0.1*np.ones(10)
     D_MAX = np.array([
-        0,0,0, 0,0,0, 10,10,10, 10,10,10,
+        0,0,0, 0,0,0, 20,20,20, 10,10,10,
     ])
     D_MIN = -D_MAX
 
     # sim settings
     SIM_T = CTRL_T / 10
 
+    xfilename = "/home/derek/dev/my-repos/qrac/examples/refs/lemniscate/xref.npy"
+    ufilename = "/home/derek/dev/my-repos/qrac/examples/refs/lemniscate/uref.npy"
+
 
     # load in time optimal trajectory
-    xref = np.load("refs/xref.npy")
-    uref = np.load("refs/uref.npy")
+    xref = np.load(xfilename)
+    uref = np.load(ufilename)
 
 
     # inaccurate model
@@ -39,9 +41,9 @@ def run():
 
     # true plant model
     m_true = 1.5 * inacc.m
-    Ixx_true = 1.8 * inacc.Ixx
-    Iyy_true = 1.8 * inacc.Iyy
-    Izz_true = 1.8 * inacc.Izz
+    Ixx_true = 5 * inacc.Ixx
+    Iyy_true = 5 * inacc.Iyy
+    Izz_true = 5 * inacc.Izz
     Ax_true = 0
     Ay_true = 0
     Az_true = 0
@@ -56,10 +58,10 @@ def run():
         k_true, u_min_true, u_max_true)
 
     # init estimator
-    p_min = AffineQuadrotor(acc).get_parameters()\
-        - 2*np.abs(AffineQuadrotor(acc).get_parameters())
-    p_max = AffineQuadrotor(acc).get_parameters()\
-        + 2*np.abs(AffineQuadrotor(acc).get_parameters())
+    p_min = AffineQuadrotor(inacc).get_parameters()\
+        - 1*np.abs(AffineQuadrotor(inacc).get_parameters())
+    p_max = AffineQuadrotor(inacc).get_parameters()\
+        + 1*np.abs(AffineQuadrotor(inacc).get_parameters())
     mhe = MHE(
         model=inacc, Q=Q_MHE, R=R_MHE,
         param_min=p_min, param_max=p_max,
@@ -73,15 +75,15 @@ def run():
         model=inacc, estimator=mhe,
         param_tol=P_TOL, param_min=p_min, param_max=p_max,
         disturb_min=D_MIN, disturb_max=D_MAX, time_step=CTRL_T,
-        qp_tol=10**-6, max_iter=10
+        qp_tol=10**-6, max_iter=3
     )
 
     # init mpc
     anmpc = AdaptiveNMPC(
         model=inacc, estimator=sm, Q=Q, R=R,
         u_min=inacc.u_min, u_max=inacc.u_max, time_step=CTRL_T,
-        num_nodes=NODES, real_time=False, rti=True, 
-        nlp_tol=10**-6, nlp_max_iter=1, qp_max_iter=4
+        num_nodes=NODES, real_time=False, rti=True,
+        nlp_tol=10**-6, nlp_max_iter=1, qp_max_iter=3
     )
 
 
@@ -100,7 +102,6 @@ def run():
     nu = inacc.nu
     uset = np.zeros(nu*NODES)
 
-    anmpc.start()
     for k in range(steps):
         diff = steps - k
         if diff < NODES:
@@ -120,15 +121,25 @@ def run():
         print(f"\nu: {u}")
         print(f"x: {x}")
         print(f"sim time: {(k+1)*CTRL_T}\n")
-    anmpc.stop()
     
     print(f"acc params:\n{AffineQuadrotor(acc).get_parameters()}")
     print(f"inacc params:\n{AffineQuadrotor(inacc).get_parameters()}")
 
 
+    # calculate RMSE
+    res = 0
+    xdata = sim.get_xdata()
+    for k in range(steps):
+        res += np.linalg.norm(
+            xref[k, 0:3] - xdata[k, 0:3], ord=2
+        )
+    rmse = np.sqrt(res/steps)
+    print(f"root mean square error: {rmse}")
+
+
     # plot
     sim.get_animation(
-        filename="/home/derek/Documents/qrac/smmhe_exp.gif"
+        filename=f"/home/derek/Documents/qrac/lemniscate/smmhe_lem_{rmse}.gif"
     )
 
 
