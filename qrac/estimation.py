@@ -279,6 +279,7 @@ class MHE():
         assert param_max.shape[0] == param_min.shape[0] == self._np
         self._p_min = param_min
         self._p_max = param_max
+        self._p_init = model_aug.get_parameters()
 
         Q_aug = self._augment_costs(Q)
         self._solver = self._init_solver(
@@ -323,9 +324,9 @@ class MHE():
         x: np.ndarray,
         u: np.ndarray,
         p: np.ndarray,
-        timer: bool,
         p_min: np.ndarray,
         p_max: np.ndarray,
+        timer: bool,
     ) -> np.ndarray:
         if timer: st = time.perf_counter()
         assert x.shape[0] == self._nx
@@ -364,7 +365,7 @@ class MHE():
         p_max: np.ndarray,
         d=np.array([]),
     ):
-        x_aug = np.concatenate((x, p))
+        x_aug = np.concatenate((x, self._p_init))
         self._solver.set(k, "x", x_aug)
         self._solver.set(k, "p", u)
 
