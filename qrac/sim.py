@@ -29,7 +29,7 @@ class MinimalSim():
         self._axmax = axes_max
         self._dt = control_step
         self._len = data_len
-        self._anim = 40
+        self._anim = 10
 
         self._x = np.zeros((data_len, model.nx))
         self._u = np.zeros((data_len, model.nu))
