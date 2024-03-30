@@ -12,7 +12,7 @@ def run():
     SIM_T = 0.0005
     CTRL_T = 0.005
     NODES = 75
-    Q = np.diag([40,40,40, 10,10,10, 20,20,20, 10,10,10])
+    Q = np.diag([1,1,1, 1,1,1, 1,1,1, 1,1,1,])
     R = np.diag([0, 0, 0, 0])
 
     # inaccurate model
@@ -28,19 +28,18 @@ def run():
 
     # initialize sim
     nx = model.nx
-    x0 = np.zeros(nx)
-    x0[0] = 8
     steps = int(round(SIM_TIME / CTRL_T))
     sim = MinimalSim(
-        x0=x0, model=model,
+        model=model,
         sim_step=SIM_T, control_step=CTRL_T,
         data_len=steps
     )
 
     # define a circular trajectory
-    traj = Circle(v=4, r=8, alt=8)
+    traj = Circle(v=4, r=4, alt=4)
 
-    x = x0
+    
+    x = np.zeros(nx)
     xset = np.zeros(nx*NODES)
     for k in range(steps):
         t = k*CTRL_T
@@ -54,7 +53,7 @@ def run():
         print(f"x: {x}")
         print(f"sim time: {(k+1)*CTRL_T}")
 
-    xdata = sim.get_xdata()
+    sim.get_animation()
 
 
 if __name__=="__main__":
