@@ -1,12 +1,12 @@
 #!/usr/bin/python3
 
+import numpy as np
 from qrac.models import Crazyflie
 from qrac.trajectory import LemniScate
 from qrac.control import NMPC
-import numpy as np
 
 
-def run():
+def main():
     # nmpc settings
     PREDICT_TIME = 20
     CTRL_T = 0.01
@@ -63,4 +63,4 @@ def run():
 
 
 if __name__=="__main__":
-    run()
+    main()
