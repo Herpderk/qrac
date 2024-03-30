@@ -351,7 +351,7 @@ class NMPC:
                 f"Please input the state cost matrix as a {self._nx}-by-{self._nx} array!")
         if R.shape != (self._nu, self._nu):
             raise ValueError(
-                f"Please input the control cost matrix as a {self._nu}-by-{self.nu} array!")
+                f"Please input the control cost matrix as a {self._nu}-by-{self._nu} array!")
         if len(u_max) != self._nu or len(u_min) != self._nu:
             raise ValueError(
                 f"Please input the minimum or maximum control input as vector of length {self._nu}!")
