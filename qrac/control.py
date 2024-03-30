@@ -8,6 +8,12 @@ May need to install qpOASES version 3.1 as well.
 
 #!/usr/bin/python3
 
+import multiprocessing as mp
+import time
+from typing import List, Tuple
+import atexit
+import shutil
+import os
 from acados_template import AcadosOcpSolver, AcadosOcp
 import casadi as cs
 import numpy as np
@@ -15,12 +21,6 @@ from scipy.linalg import block_diag, expm
 from scipy.interpolate import make_interp_spline
 import matplotlib.pyplot as plt
 import matplotlib
-import multiprocessing as mp
-import time
-from typing import List, Tuple
-import atexit
-import shutil
-import os
 from qrac.models import Quadrotor, AffineQuadrotor,\
                         ParameterizedQuadrotor
 
@@ -340,10 +340,10 @@ class NMPC:
             and type(model) != ParameterizedQuadrotor:
                 raise TypeError(
                     "The inputted model must be of type 'Quadrotor'!")
-        if type(Q) != np.ndarray:
+        if not isinstance(Q, np.ndarray):
             raise TypeError(
                 "Please input the cost matrix as a numpy array!")
-        if type(R) != np.ndarray:
+        if not isinstance(R, np.ndarray):
             raise TypeError(
                 "Please input the cost matrix as a numpy array!")
         if Q.shape != (self._nx, self._nx):
