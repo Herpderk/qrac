@@ -320,7 +320,7 @@ def Crazyflie(
     yB = np.array(
         [0.0283, -0.0283, -0.0283, 0.0283])
     k = 0.005964552 * np.ones(4)
-    u_min = -0.15 * np.ones(4)
-    u_max = -u_min
+    u_min = 0
+    u_max = 0.15 * np.ones(4)
     return Quadrotor(
         m, Ixx, Iyy, Izz, Ax, Ay, Az, xB, yB, k, u_min, u_max)
