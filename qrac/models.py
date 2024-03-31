@@ -1,8 +1,8 @@
 #!/usr/bin/python3
 
+from typing import Tuple
 import casadi as cs
 import numpy as np
-from typing import Tuple
 from acados_template import AcadosModel
 
 class Quadrotor():
@@ -15,19 +15,24 @@ class Quadrotor():
         Ax: float,
         Ay: float,
         Az: float,
+        kf: float,
+        km: float,
         xB: np.ndarray,
         yB: np.ndarray,
-        k: np.ndarray,
         u_min: np.ndarray,
         u_max: np.ndarray,
         name="Nonlinear_Quadrotor",
     ) -> None:
         """
         Struct containing mass, moments of inertias, linear air resistance terms,
-        distances of rotors from the body-frame x-axis, distances of rotors from the body-frame y-axis,
-        and torque coefficient magnitudes associated with each rotor's thrust.
+        thrust and moment coefficients, distances of rotors from the body-frame x-axis,
+        and distances of rotors from the body-frame y-axis,
         """
-        self._assert(m, Ixx, Iyy, Izz, Ax, Ay, Az, xB, yB, k, name)
+        self._assert(
+            m=m, Ixx=Ixx, Iyy=Iyy, Izz=Izz,
+            Ax=Ax, Ay=Ay, Az=Az, kf=kf, km=km,
+            xB=xB, yB=yB, name=name
+        )
         self.m = m
         self.Ixx = Ixx
         self.Iyy = Iyy
@@ -37,7 +42,8 @@ class Quadrotor():
         self.Az = Az
         self.xB = xB
         self.yB = yB
-        self.k = k
+        self.kf = kf
+        self.km = km
         self.u_min = u_min
         self.u_max = u_max
         self.name = name
@@ -111,9 +117,9 @@ class Quadrotor():
 
         # control allocation matrix
         self.B = cs.SX(cs.vertcat(
-            self.yB.reshape(1, self.yB.shape[0]),
-            -self.xB.reshape(1, self.xB.shape[0]),
-            cs.horzcat(-self.k[0], self.k[1], -self.k[2], self.k[3]),
+            self.kf * self.yB.reshape(1, self.yB.shape[0]),
+            self.kf * -self.xB.reshape(1, self.xB.shape[0]),
+            self.km * cs.horzcat(-1, 1, -1, 1),
         ))
 
         # gravity vector
@@ -122,7 +128,8 @@ class Quadrotor():
         # thrust of motors 1 to 4
         self.u = cs.SX.sym("u", 4)
         self.T = cs.SX(cs.vertcat(
-            0, 0, self.u[0]+self.u[1]+self.u[2]+self.u[3]))
+            0, 0, self.kf * (self.u[0]+self.u[1]+self.u[2]+self.u[3])
+        ))
 
         # continuous-time dynamics
         v = cs.SX(cs.vertcat(x_dot, y_dot, z_dot))
@@ -146,15 +153,16 @@ class Quadrotor():
         Ax: float,
         Ay: float,
         Az: float,
+        kf: float,
+        km: float,
         xB: np.ndarray,
         yB: np.ndarray,
-        k: np.ndarray,
         name: str,
     ) -> None:
-        for arg in [m, Ixx, Iyy, Izz, Ax, Ay, Az]:
+        for arg in [m, Ixx, Iyy, Izz, Ax, Ay, Az, kf, km]:
             if (type(arg) != int and type(arg) != float):
                 raise TypeError(f"{arg} should be an int or float!")
-        for arg in [xB, yB, k]:
+        for arg in [xB, yB,]:
             if len(arg) != 4:
                 raise ValueError(f"{arg} should be a float vector of length 4!")
         if type(name) != str:
@@ -169,8 +177,8 @@ class ParameterizedQuadrotor(Quadrotor):
         assert type(model) == Quadrotor
         super().__init__(
             model.m, model.Ixx, model.Iyy, model.Izz,
-            model.Ax, model.Ay, model.Az, model.xB, model.yB,
-            model.k, model.u_min, model.u_max,
+            model.Ax, model.Ay, model.Az, model.kf, model.km,
+            model.xB, model.yB, model.u_min, model.u_max,
             "Nonlinear_Parameterized_Quadrotor"
         )
         self.np = 7
@@ -211,8 +219,9 @@ class AffineQuadrotor(Quadrotor):
         assert type(model) == Quadrotor
         super().__init__(
             model.m, model.Ixx, model.Iyy, model.Izz,
-            model.Ax, model.Ay, model.Az, model.xB, model.yB,
-            model.k, model.u_min, model.u_max, "Parameter_Affine_Quadrotor"
+            model.Ax, model.Ay, model.Az, model.kf, model.km,
+            model.xB, model.yB, model.u_min, model.u_max,
+            "Parameter_Affine_Quadrotor"
         )
         self.np = 10
         self._get_param_affine_dynamics()
@@ -286,8 +295,9 @@ class DisturbedQuadrotor(Quadrotor):
             assert type(model) == Quadrotor
             super().__init__(
                 model.m, model.Ixx, model.Iyy, model.Izz,
-                model.Ax, model.Ay, model.Az, model.xB, model.yB,
-                model.k, model.u_min, model.u_max, "Disturbed_Quadrotor"
+                model.Ax, model.Ay, model.Az, model.kf, model.km,
+                model.xB, model.yB, model.u_min, model.u_max,
+                "Disturbed_Quadrotor"
             )
             self._get_disturbed_dynamics()
 
@@ -306,21 +316,33 @@ def Crazyflie(
     Ax: float,
     Ay: float,
     Az: float,
+    THRUST_MODE=True
 ) -> Quadrotor:
     """
     crazyflie system identification:
     https://www.research-collection.ethz.ch/handle/20.500.11850/214143
     """
-    m = 0.028
-    Ixx = 3.144988 * 10**(-5)
-    Iyy = 3.151127 * 10**(-5)
-    Izz = 7.058874 * 10**(-5)
-    xB = np.array(
-        [0.0283, 0.0283, -0.0283, -0.0283])
-    yB = np.array(
-        [0.0283, -0.0283, -0.0283, 0.0283])
-    k = 0.005964552 * np.ones(4)
-    u_min = 0
-    u_max = 0.15 * np.ones(4)
+    m = 0.027
+    Ixx = 1.6571710 * 10**-5
+    Iyy = 1.6655602 * 10**-5
+    Izz = 2.9261652 * 10**-5
+    xB = 0.0283 * np.array(
+        [1, 1, -1, -1])
+    yB = 0.0283 * np.array(
+        [1, -1, -1, 1])
+
+    if THRUST_MODE:
+        kf = 1
+        u_max = 0.15 * np.ones(4)
+    else:
+        # performed additional quadratic fit with root at origin (ax^2) on ethz sys id
+        kf = 1.8 * 10**-8
+        u_max = 2900 * np.ones(4)
+    
+    km = 0.005964552 * kf
+    u_min = np.zeros(4)
     return Quadrotor(
-        m, Ixx, Iyy, Izz, Ax, Ay, Az, xB, yB, k, u_min, u_max)
+        m=m, Ixx=Ixx, Iyy=Iyy, Izz=Izz,
+        Ax=Ax, Ay=Ay, Az=Az, kf=kf, km=km,
+        xB=xB, yB=yB, u_min=u_min, u_max=u_max
+    )
