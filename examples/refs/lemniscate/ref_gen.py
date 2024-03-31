@@ -8,7 +8,7 @@ from qrac.control import NMPC
 
 def main():
     # nmpc settings
-    PREDICT_TIME = 20
+    PREDICT_TIME = 30
     CTRL_T = 0.01
     NODES = int(round(PREDICT_TIME / CTRL_T))
     Q = np.diag([4,4,4, 1,1,1, 0,0,0, 0,0,0,])
@@ -16,10 +16,10 @@ def main():
 
 
     # traj settings
-    A = 5
-    B = 1
+    A = 1
+    B = 2
     AXES = [0,1]
-    TRANSLATE = [0,0,5]
+    TRANSLATE = [0,0,1]
     xfilename = "/home/derek/dev/my-repos/qrac/examples/refs/lemniscate/xref.npy"
     ufilename = "/home/derek/dev/my-repos/qrac/examples/refs/lemniscate/uref.npy"
 
@@ -31,9 +31,9 @@ def main():
     # init nmpc
     nmpc = NMPC(
         model=model, Q=Q, R=R,
-        u_min=model.u_min, u_max=model.u_max, 
+        u_min=model.u_min, u_max=model.u_max,
         time_step=CTRL_T, num_nodes=NODES,
-        rti=False, nlp_max_iter=100, qp_max_iter=50
+        rti=False, nlp_max_iter=200, qp_max_iter=100
     )
 
 
