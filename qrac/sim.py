@@ -19,8 +19,8 @@ class MinimalSim():
         sim_step: float,
         control_step: float,
         data_len: int,
-        axes_min=[-5,-5,0],
-        axes_max=[5,5,10]
+        axes_min=[-2,-2,0],
+        axes_max=[2,2,4]
     ) -> None:
         self._assert(model, sim_step, control_step)
         self._nx = model.nx
