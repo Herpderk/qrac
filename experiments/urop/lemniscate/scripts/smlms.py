@@ -28,7 +28,6 @@ def main():
     # file access
     xfilename = "/home/derek/dev/my-repos/qrac/experiments/urop/lemniscate/refs/xref.npy"
     ufilename = "/home/derek/dev/my-repos/qrac/experiments/urop/lemniscate/refs/uref.npy"
-    resultsname = "/home/derek/dev/my-repos/qrac/experiments/urop/lemniscate/results/smlms_err.npy"
 
 
     # load in time optimal trajectory
@@ -142,12 +141,15 @@ def main():
 
     # save data of tracking error
     err = np.sum(np.abs( xref[:,0:3] - xdata[:,0:3] )**2,axis=-1)**0.5
-    np.save(resultsname, err)
+    np.save(
+        "/home/derek/dev/my-repos/qrac/experiments/urop/lemniscate/data/smlms_err.npy",
+        err
+    )
 
 
     # plot
     sim.get_animation(
-        f"/home/derek/dev/my-repos/qrac/experiments/urop/lemniscate/results/smlms_lem_{rmse}"
+        f"/home/derek/dev/my-repos/qrac/experiments/urop/lemniscate/figures/smlms_lem_{rmse}.gif"
     )
 
 
