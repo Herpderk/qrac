@@ -119,23 +119,18 @@ def main():
     print(f"inacc params:\n{ParameterizedQuadrotor(inacc).get_parameters()}")
 
 
-    # calculate RMSE
-    res = 0
-    xdata = sim.get_xdata()
-    for k in range(steps):
-        res += np.linalg.norm(
-            xref[k, 0:3] - xdata[k, 0:3], ord=2
-        )
-    rmse = np.sqrt(res/steps)
-    print(f"root mean square error: {rmse}")
-
-
     # save data of tracking error
+    xdata = sim.get_xdata()
     err = np.sum(np.abs( xref[:,0:3] - xdata[:,0:3] )**2,axis=-1)**0.5
     np.save(
         "/home/derek/dev/my-repos/qrac/experiments/urop/lemniscate/data/mhe_err.npy",
         err
     )
+
+
+    # calculate RMSE
+    rmse = np.sqrt(np.sum(np.square(err))/err.shape[0])
+    print(f"RMSE: {rmse}")
 
 
     # plot
