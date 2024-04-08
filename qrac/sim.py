@@ -3,6 +3,7 @@
 from acados_template import AcadosSim, AcadosSimSolver
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import matplotlib.animation as animation
 import time
 import atexit
@@ -29,7 +30,7 @@ class MinimalSim():
         self._axmax = axes_max
         self._dt = control_step
         self._len = data_len
-        self._anim = 10
+        self._anim = 40
 
         self._x = np.zeros((data_len, model.nx))
         self._u = np.zeros((data_len, model.nu))
@@ -69,7 +70,7 @@ class MinimalSim():
     def get_udata(self) -> np.ndarray:
         return self._u
 
-    def get_plot(self) -> None:
+    def get_plot(self, filename="") -> None:
         x = self._x[:,0]
         y = self._x[:,1]
         z = self._x[:,2]
@@ -77,6 +78,11 @@ class MinimalSim():
         self._ax.scatter(x[0], y[0], z[0], c="b")
         self._ax.scatter(x[-1], y[-1], z[-1], c="g")
         self._line.set_data_3d(x, y, z)
+
+        if len(filename):
+            print("Saving plot...")
+            plt.savefig(filename)
+            print("Plot saved.")
         plt.show()
         self._reset()
 
@@ -119,12 +125,20 @@ class MinimalSim():
         ax.set_ylim(self._axmin[1], self._axmax[1])
         ax.set_zlim(self._axmin[2], self._axmax[2])
 
+        freq = 4
+        xspace = (self._axmax[0] - self._axmin[0]) / freq
+        yspace = (self._axmax[1] - self._axmin[1]) / freq
+        zspace = (self._axmax[2] - self._axmin[2]) / freq
+        ax.xaxis.set_major_locator(ticker.MultipleLocator(xspace))
+        ax.yaxis.set_major_locator(ticker.MultipleLocator(yspace))
+        ax.zaxis.set_major_locator(ticker.MultipleLocator(zspace))
+
         ax.xaxis.set_rotate_label(False)
-        ax.set_xlabel(r"$\bf{x}$ (m)", fontsize=12)
         ax.yaxis.set_rotate_label(False)
-        ax.set_ylabel(r"$\bf{y}$ (m)", fontsize=12)
         ax.zaxis.set_rotate_label(False)
-        ax.set_zlabel(r"$\bf{z}$ (m)", fontsize=12)
+        ax.set_ylabel(r"$\bf{y}$ (m)", fontsize=14)
+        ax.set_xlabel(r"$\bf{x}$ (m)", fontsize=14)
+        ax.set_zlabel(r"$\bf{z}$ (m)", fontsize=14)
 
         line = ax.plot([],[],[], c="r")[0]
         return fig, ax, line
