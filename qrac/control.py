@@ -74,15 +74,16 @@ class NMPC:
         self,
         x: np.ndarray,
         xset: np.ndarray,
-        uset=[],
+        uset=np.array([]),
+        p=np.array([]),
         timer=False,
     ) -> np.ndarray:
         """
         Get the first control input from the optimization.
         """
-        if not len(uset):
+        if len(uset) ==0:
             uset = np.tile(self._u_avg, self._N)
-        self._solve(x=x, xset=xset, uset=uset, timer=timer)
+        self._solve(x=x, xset=xset, uset=uset, p=p, timer=timer)
         nxt_ctrl = np.array(self._solver.get(0, "u"))
         return nxt_ctrl
 
@@ -90,7 +91,8 @@ class NMPC:
         self,
         x: np.ndarray,
         xset: np.ndarray,
-        uset=[],
+        uset=np.array([]),
+        p=np.array([]),
         timer=False,
     ) -> np.ndarray:
         """
@@ -98,7 +100,7 @@ class NMPC:
         """
         if not len(uset):
             uset = np.tile(self._u_avg, self._N)
-        self._solve(x=x, xset=xset, uset=uset, timer=timer)
+        self._solve(x=x, xset=xset, uset=uset, p=p, timer=timer)
         nxt_state = np.array(self._solver.get(1, "x"))
         return nxt_state
 
@@ -106,7 +108,8 @@ class NMPC:
         self,
         x: np.ndarray,
         xset: np.ndarray,
-        uset=[],
+        uset=np.array([]),
+        p=np.array([]),
         timer=False,
         visuals=False,
     ) -> Tuple[np.ndarray]:
@@ -115,7 +118,7 @@ class NMPC:
         """
         if not len(uset):
             uset = np.tile(self._u_avg, self._N)
-        self._solve(x=x, xset=xset, uset=uset, timer=timer)
+        self._solve(x=x, xset=xset, uset=uset, p=p, timer=timer)
         opt_xs = np.zeros((self._N, self._nx))
         opt_us = np.zeros((self._N, self._nu))
         for k in range(self._N):
@@ -130,6 +133,7 @@ class NMPC:
         x: np.ndarray,
         xset: np.ndarray,
         uset: np.ndarray,
+        p: np.ndarray,
         timer: bool,
     ) -> None:
         """
@@ -152,7 +156,8 @@ class NMPC:
                  uset[k*self._nu : k*self._nu + self._nu])
             )
             self._solver.set(k, "yref", yref)
-        
+            self._solver.set(k, "p", p)
+
         self._solver.solve()
         #self._solver.print_statistics()
 
@@ -207,6 +212,9 @@ class NMPC:
 
         # Initialize reference trajectory (will be overwritten)
         ocp.cost.yref = np.zeros(ny)
+
+        # init parameter vector
+        ocp.parameter_values = np.zeros(model.np)
 
         # Initial state (will be overwritten)
         ocp.constraints.x0 = np.zeros(model.nx)
@@ -407,10 +415,8 @@ class AdaptiveNMPC():
             model_aug = ParameterizedQuadrotor(model)
         else:
             model_aug = AffineQuadrotor(model)
-        self._np = model_aug.np
-        Q_aug = self._augment_cost(Q)
         self._mpc = NMPC(
-            model=model_aug, Q=Q_aug, R=R,
+            model=model_aug, Q=Q, R=R,
             u_min=u_min, u_max=u_max,
             time_step=time_step,
             num_nodes=num_nodes, rti=rti,
@@ -450,30 +456,18 @@ class AdaptiveNMPC():
         self,
         x: np.ndarray,
         xset: np.ndarray,
-        uset=[],
+        uset=np.array([]),
         timer=False,
     ) -> np.ndarray:
         self._x[:] = x
         self._timer.value = timer
-        if not self._rt: self._get_param()
+        if not self._rt:
+            self._get_param()
 
-        x_aug = np.concatenate((x, npify(self._p)))
-        xset_aug = self._augment_xset(xset)
         self._u[:] = self._mpc.get_input(
-            x=x_aug, xset=xset_aug, uset=uset, timer=timer
+            x=x, xset=xset, uset=uset, p=npify(self._p), timer=timer
         )
         return npify(self._u)
-
-    def _augment_xset(
-        self,
-        xset: np.ndarray
-    ) -> np.ndarray:
-        nx = self._nx
-        xset_aug = np.zeros(self._N * (nx+self._np))
-        for k in range(self._N):
-            xset_aug[k*(nx+self._np) : k*(nx+self._np) + nx] =\
-                xset[k*nx : k*nx + nx]
-        return xset_aug
 
     def _param_proc(self) -> None:
         param_proc = mp.Process(target=self._run_param_est)
@@ -497,15 +491,6 @@ class AdaptiveNMPC():
             timer=self._timer.value
         )
         self._p[:] = param
-
-    def _augment_cost(
-        self,
-        Q: np.ndarray,
-    ) -> np.ndarray:
-        Q_aug = block_diag(
-            Q, np.zeros((self._np, self._np))
-        )
-        return Q_aug
 
 
 class L1Augmentation():

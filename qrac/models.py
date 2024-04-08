@@ -48,6 +48,7 @@ class Quadrotor():
         self.u_max = u_max
         self.name = name
         self._get_dynamics()
+        self.np = 0
         self.nx, self.nu = self.get_dims()
 
     def get_acados_model(self) -> AcadosModel:
@@ -142,7 +143,7 @@ class Quadrotor():
         ))
         
         # ocp problem parameter
-        self.p = []
+        self.p = np.array([])
 
     def _assert(
         self,
@@ -181,17 +182,25 @@ class ParameterizedQuadrotor(Quadrotor):
             model.xB, model.yB, model.u_min, model.u_max,
             "Nonlinear_Parameterized_Quadrotor"
         )
-        self.np = 7
+        self.np = 4
         self._get_param_dynamics()
 
     def get_parameters(self) -> np.ndarray:
         param = np.array([
-            self.m, self.Ax, self.Ay, self.Az,
+            self.m, #self.Ax, self.Ay, self.Az,
             self.Ixx, self.Iyy, self.Izz
         ])
         return param
 
     def set_prediction_model(self) -> None:
+        self.x = cs.SX(cs.vertcat(
+            self.x, self.p
+        ))
+        self.xdot = cs.SX(cs.vertcat(
+            self.xdot, cs.SX.zeros(self.np)
+        ))
+        self.nx, self.nu = self.get_dims()
+
         self.nu = self.nx - self.np
         self.p = self.u
         d = cs.SX.sym("d", self.nu)
@@ -199,16 +208,18 @@ class ParameterizedQuadrotor(Quadrotor):
         self.xdot[:self.nu] += d
 
     def _get_param_dynamics(self) -> None:
-        param = cs.SX.sym("param", self.np)
-        x_aug = cs.SX(cs.vertcat(
-            self.x, param
+        self.p = cs.SX.sym("p", self.np)
+        m = self.p[0]
+        A = cs.diag(cs.vertcat(self.Ax, self.Ay, self.Az))
+        J = cs.SX(cs.diag(self.p[1:4]))
+
+        # continuous-time dynamics
+        v = self.x[6:9]
+        w_B = self.x[9:12]
+        self.xdot[6:12] = cs.SX(cs.vertcat(
+            (self.R@self.T - A@v)/m + self.g,
+            cs.inv(J) @ (self.B@self.u - cs.cross(w_B, J@w_B))
         ))
-        xdot_aug = cs.SX(cs.vertcat(
-            self.xdot, cs.SX.zeros(self.np)
-        ))
-        self.x = x_aug
-        self.xdot = xdot_aug
-        self.nx, self.nu = self.get_dims()
 
 
 class AffineQuadrotor(Quadrotor):
@@ -223,13 +234,14 @@ class AffineQuadrotor(Quadrotor):
             model.xB, model.yB, model.u_min, model.u_max,
             "Parameter_Affine_Quadrotor"
         )
-        self.np = 10
+        #self.np = 10
+        self.np = 7
         self._get_param_affine_dynamics()
 
     def get_parameters(self) -> np.ndarray:
         param = np.array([
-            1/self.m, self.Ax/self.m,
-            self.Ay/self.m, self.Az/self.m,
+            1/self.m, #self.Ax/self.m,
+            #self.Ay/self.m, self.Az/self.m,
             1/self.Ixx, 1/self.Iyy, 1/self.Izz,
             (self.Izz-self.Iyy)/self.Ixx,
             (self.Ixx-self.Izz)/self.Iyy,
@@ -238,6 +250,14 @@ class AffineQuadrotor(Quadrotor):
         return param
     
     def set_prediction_model(self) -> None:
+        self.x = cs.SX(cs.vertcat(
+            self.x, self.p
+        ))
+        self.xdot = cs.SX(cs.vertcat(
+            self.xdot, cs.SX.zeros(self.np)
+        ))
+        self.nx, self.nu = self.get_dims()
+
         self.nu = self.nx - self.np
         self.p = self.u
         d = cs.SX.sym("d", self.nu)
@@ -245,15 +265,13 @@ class AffineQuadrotor(Quadrotor):
         self.xdot[:self.nu] += d
 
     def _get_param_affine_dynamics(self) -> None:
-        param = cs.SX.sym("param", self.np)
-        x_aug = cs.SX(cs.vertcat(
-            self.x, param
-        ))
+        self.p = cs.SX.sym("p", self.np)
 
         vels = self.x[6:9]
-        p = x_aug[9]
-        q = x_aug[10]
-        r = x_aug[11]
+        p = self.x[9]
+        q = self.x[10]
+        r = self.x[11]
+        A = cs.diag(cs.vertcat(self.Ax, self.Ay, self.Az))
 
         self.F = cs.SX(cs.vertcat(
             vels,
@@ -261,30 +279,33 @@ class AffineQuadrotor(Quadrotor):
             self.g,
             cs.SX.zeros(3),
         ))
+        '''
         self.G = cs.SX(cs.vertcat(
-            cs.SX.zeros(6, 10),
+            cs.SX.zeros(6, self.np),
             cs.horzcat(
                 self.R @ self.T,
                 cs.diag(-vels),
                 cs.SX.zeros(3, 6)
             ),
             cs.horzcat(
-                cs.SX.zeros(3, 4), 
+                cs.SX.zeros(3, 4),
+                cs.diag(self.B @ self.u),
+                -cs.diag(cs.vertcat(q*r, p*r, p*q))
+            ),
+        ))'''
+        self.G = cs.SX(cs.vertcat(
+            cs.SX.zeros(6, self.np),
+            cs.horzcat(
+                self.R@self.T - A@vels,
+                cs.SX.zeros(3, self.np-1)
+            ),
+            cs.horzcat(
+                cs.SX.zeros(3, self.np-6),
                 cs.diag(self.B @ self.u),
                 -cs.diag(cs.vertcat(q*r, p*r, p*q))
             ),
         ))
-
-        F_aug = cs.SX(cs.vertcat(
-            self.F, cs.SX.zeros(10)
-        ))
-        G_aug = cs.SX(cs.vertcat(
-            self.G, cs.SX.zeros(10,10)
-        ))
-
-        self.x = x_aug
-        self.xdot = F_aug + G_aug @ param
-        self.nx, self.nu = self.get_dims()
+        self.xdot = self.F + self.G @ self.p
 
 
 class DisturbedQuadrotor(Quadrotor):
@@ -338,7 +359,7 @@ def Crazyflie(
         # performed additional quadratic fit with root at origin (ax^2) on ethz sys id
         kf = 1.8 * 10**-8
         u_max = 2900 * np.ones(4)
-    
+
     km = 0.005964552 * kf
     u_min = np.zeros(4)
     return Quadrotor(
