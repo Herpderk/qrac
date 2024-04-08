@@ -1,15 +1,15 @@
 #!/usr/bin/python3
 
-from acados_template import AcadosOcpSolver, AcadosOcp
-import casadi as cs
-import numpy as np
-from scipy.linalg import block_diag
-from qpsolvers.solvers.proxqp_ import proxqp_solve_qp
 import time
 from typing import Tuple
 import atexit
 import shutil
 import os
+from acados_template import AcadosOcpSolver, AcadosOcp
+import casadi as cs
+import numpy as np
+from scipy.linalg import block_diag
+from qpsolvers.solvers.proxqp_ import proxqp_solve_qp
 from qrac.models import Quadrotor, AffineQuadrotor, ParameterizedQuadrotor
 
 
@@ -25,19 +25,20 @@ class SetMembershipEstimator:
         disturb_max: np.ndarray,
         time_step: float,
         qp_tol=10**-6,
-        max_iter=10,
+        max_iter=20,
     ) -> None:
         self._nx = model.nx
         self._est = estimator
         model_aug = AffineQuadrotor(model)
-        self._Fd, self._Gd, self._Gd_T = \
-            self._get_discrete_dynamics(model_aug, self._nx, time_step)
+        self._Fd, self._Gd, = self._discretize(
+            model_aug, self._nx, time_step
+        )
 
         self._np = model_aug.np
-        self._d_min = disturb_min
-        self._d_max = disturb_max
+        self._d_min = time_step*disturb_min
+        self._d_max = time_step*disturb_max
         self._p_tol = param_tol
-        self._sol_tol = qp_tol
+        self._qp_tol = qp_tol
         self._max_iter = max_iter
 
         self._x = np.zeros(self._nx)
@@ -49,7 +50,7 @@ class SetMembershipEstimator:
     def is_nonlinear(self) -> bool:
         return False
 
-    def _get_discrete_dynamics(
+    def _discretize(
         self,
         model: AffineQuadrotor,
         nx: int,
@@ -59,8 +60,7 @@ class SetMembershipEstimator:
         Gd = dt*model.G
         Fd_func = cs.Function("Fd_func", [model.x[:nx], model.u], [Fd])
         Gd_func = cs.Function("Gd_func", [model.x[:nx], model.u], [Gd])
-        Gd_T_func = cs.Function("Gd_T_func", [model.x[:nx], model.u], [Gd.T])
-        return Fd_func, Gd_func, Gd_T_func
+        return Fd_func, Gd_func
 
     def get_param(
         self,
@@ -71,13 +71,14 @@ class SetMembershipEstimator:
     ) -> np.ndarray:
         st = time.perf_counter()
         p_min, p_max = self._sm_update(x, u)
-        self._update_param_bds(p_min, p_max)
         p = self._est.get_param(
             x=x, u=u, param=param,
             param_min=p_min, param_max=p_max,
             timer=False
         )
         self._x = x
+        print(f"param min: {p_min}")
+        print(f"param max: {p_max}")
         if timer:
             et = time.perf_counter()
             print(f"sm runtime: {et - st}")
@@ -102,19 +103,19 @@ class SetMembershipEstimator:
                 if p_max[i] - p_min[i] > self._p_tol[i]:
                     sol_min[i] = self._solve_lp(
                         idx=i, x=x, xprev=self._x,
-                        u=u, max=False
+                        u=u, is_max=False
                     )
                     sol_max[i] = self._solve_lp(
                         idx=i, x=x, xprev=self._x,
-                        u=u, max=True
+                        u=u, is_max=True
                     )
                 else:
                     sol_min[i] = p_min[i]
                     sol_max[i] = p_max[i]
 
-            p_min = np.maximum(sol_min, p_min)
-            p_max = np.minimum(sol_max, p_max)
-        return p_min, p_max
+            self._p_min = np.maximum(sol_min, p_min)
+            self._p_max = np.minimum(sol_max, p_max)
+        return self._p_min, self._p_max
 
     def _solve_lp(
         self,
@@ -122,31 +123,40 @@ class SetMembershipEstimator:
         x: np.ndarray,
         xprev: np.ndarray,
         u: np.ndarray,
-        max: bool
+        is_max: bool
     ) -> float:
         P = np.zeros((self._np, self._np))
         q = np.zeros(self._np)
-        if max: q[idx] = -1.0
-        else: q[idx] = 1.0
+        if is_max:
+            q[idx] = -1.0
+        else:
+            q[idx] = 1.0
 
         Fd = np.array(self._Fd(xprev, u)).flatten()
         Gd = np.array(self._Gd(xprev, u))
         G = np.block([[Gd], [-Gd]])
-        h = np.block([x-Fd-self._d_min, -x+Fd+self._d_max])
+        h = np.round(
+            np.block([x-Fd-self._d_min, -x+Fd+self._d_max]), 2
+        )
 
-        if max: p_init = self._p_max
-        else: p_init = self._p_min
+        if is_max:
+            p_init = self._p_max
+        else:
+            p_init = self._p_min
         p_bd = proxqp_solve_qp(
             P=P, q=q, G=G, h=h,
-            lb=self._p_min, ub=self._p_max,
-            initvals=p_init, verbose=False, backend="dense",
-            eps_abs=self._sol_tol, max_iter=self._max_iter,
+            lb=self._p_min, ub=self._p_max, initvals=p_init,
+            verbose=False, backend="dense",
+            eps_abs=self._qp_tol, max_iter=self._max_iter,
         )
+
         try:
             return p_bd[idx]
         except TypeError:
-            if max: return self._p_max[idx]
-            else: return self._p_min[idx]
+            if is_max:
+                return self._p_max[idx]
+            else:
+                return self._p_min[idx]
 
     def _update_param_bds(
         self,
@@ -161,6 +171,8 @@ class LMS():
     def __init__(
         self,
         model: Quadrotor,
+        param_min: np.ndarray,
+        param_max: np.ndarray,
         update_gain: float,
         time_step: float,
         qp_tol=10**-6,
@@ -175,6 +187,8 @@ class LMS():
         self._mu = update_gain
         self._sol_tol = qp_tol
         self._max_iter = max_iter
+        self._p_min = param_min
+        self._p_max = param_max
         self._x = np.zeros(self._nx)
 
     @property
@@ -199,14 +213,19 @@ class LMS():
         x: np.ndarray,
         u: np.ndarray,
         param: np.ndarray,
-        param_min: np.ndarray,
-        param_max: np.ndarray,
+        param_min=np.array([]),
+        param_max=np.array([]),
         timer=True
     ) -> np.ndarray:
         if timer: st = time.perf_counter()
         x_err = x - self._Fd(self._x, u) - self._Gd(self._x, u)@param
         p_lms = param + self._mu*self._Gd_T(self._x, u)@x_err
         p_lms = np.array(p_lms).flatten()
+
+        if param_min.shape[0] == 0:
+            param_min = self._p_min
+        if param_max.shape[0] == 0:
+            param_max = self._p_max
         p_proj = self._solve_proj(
             p=p_lms, p_min=param_min, p_max=param_max
         )
@@ -215,6 +234,7 @@ class LMS():
         if timer:
             et = time.perf_counter()
             print(f"LMS runtime: {et - st}")
+        print(f"\nparams: {p_proj}\n")
         return p_proj
 
     def _solve_proj(
@@ -294,7 +314,7 @@ class MHE():
         self._x = np.zeros((self._N, self._nx))
         self._u = np.zeros((self._N-1, self._nu))
         self._d = np.zeros((self._N-1, self._nx))
-        
+
 
     @property
     def is_nonlinear(self) -> bool:
@@ -313,8 +333,9 @@ class MHE():
             x=x, u=u, p=param, p_min=param_min,
             p_max=param_max, timer=timer
         )
+        #self._solver.print_statistics()
         p = np.array(
-            self._solver.get(1,"x")[self._nx : self._nx+self._np]
+            self._solver.get(0,"x")[self._nx : self._nx+self._np]
         )
         print(f"params: {p}\n")
         return p
@@ -332,24 +353,28 @@ class MHE():
         assert x.shape[0] == self._nx
         assert u.shape[0] == self._nu
         assert p.shape[0] == self._np
-        
+
         # set history of x, u, and d at each stage
-        for k in range(self._N - 1):
+        for k in range(self._N-1):
             self._set_stage(
-                k=k, x=self._x[k+1], u=self._u[k], d=self._d[k],
+                k=k, x=self._x[k], u=self._u[k], d=self._d[k],
                 p=p, p_min=p_min, p_max=p_max
             )
+
         # set new measurements
         self._set_stage(
-            k=self._N, x=x, u=u,
+            k=self._N-1, x=self._x[self._N-1], u=u,
+            p=p, p_min=p_min, p_max=p_max
+        )
+        self._set_stage(
+            k=self._N, x=x,
             p=p, p_min=p_min, p_max=p_max
         )
         self._solver.solve()
 
         # get the latest disturbance estimate
         # propagate the horizon by 1 step
-        d = np.array(self._solver.get(self._N-1, "u"))
-        self._update_horizon(x=x, u=u, d=d)
+        self._update_horizon(x=x, u=u)
 
         if timer:
             et = time.perf_counter()
@@ -359,46 +384,49 @@ class MHE():
         self,
         k: int,
         x: np.ndarray,
-        u: np.ndarray,
-        p: np.ndarray,
         p_min: np.ndarray,
         p_max: np.ndarray,
+        p=np.array([]),
+        u=np.array([]),
         d=np.array([]),
     ):
-        x_aug = np.concatenate((x, self._p_init))
+        x_aug = np.concatenate((x, p))#self._p_init))
         self._solver.set(k, "x", x_aug)
-        self._solver.set(k, "p", u)
 
+        if k == self._N-1:
+            d = np.zeros(self._nx)
         if k != self._N:
             yref = np.concatenate((x_aug, d))
             self._solver.set(k, "yref", yref)
             self._solver.set(k, "u", d)
+            self._solver.set(k, "p", u)
 
-        if len(p_min) == 0:
-            p_min = self._p_min
-        lbx_aug = np.concatenate((x, p_min))
-        self._solver.set(k, "lbx", lbx_aug)
+        if k!= 0:
+            if p_min.shape[0] == 0:
+                p_min = self._p_min
+            lbx_aug = np.concatenate((x, p_min))
+            self._solver.set(k, "lbx", lbx_aug)
 
-        if len(p_max) == 0:
-            p_max = self._p_max
-        ubx_aug = np.concatenate((x, p_max))
-        self._solver.set(k, "ubx", ubx_aug)
+            if p_max.shape[0] == 0:
+                p_max = self._p_max
+            ubx_aug = np.concatenate((x, p_max))
+            self._solver.set(k, "ubx", ubx_aug)
 
     def _update_horizon(
         self,
         x: np.ndarray,
         u: np.ndarray,
-        d: np.ndarray
     ):
         self._x = np.block([
             [self._x[1:self._N, :]], [x]
         ])
         self._u = np.block([
-            [self._u[1:self._N, :]], [u]
+            [self._u[1:self._N-1, :]], [u]
         ])
-        self._d = np.block([
-            [self._d[1:self._N, :]], [d]
-        ])    
+        for k in range(1, self._N):
+            self._d[k-1,:] = np.array(
+                self._solver.get(k, "u")
+            )
 
     def _init_solver(
         self,
@@ -435,7 +463,7 @@ class MHE():
         ocp.cost.cost_type_e = "LINEAR_LS"
 
         # W is a block diag matrix of Q and R costs from standard QP
-        ocp.cost.W = block_diag(Q,R)
+        ocp.cost.W = block_diag(Q, R)
 
         # use V coeffs to map x & u to y
         ocp.cost.Vx = np.zeros((ny, model.nx))
@@ -454,9 +482,6 @@ class MHE():
         ocp.constraints.idxbu = np.arange(model.nu)
         ocp.constraints.lbu = d_min
         ocp.constraints.ubu = d_max
-        
-        # Initial state (will be overwritten)
-        ocp.constraints.x0 = np.zeros(model.nx)
 
         # augmented state constraints (will be overwritten)
         ocp.constraints.idxbx = np.arange(model.nx)
@@ -485,6 +510,7 @@ class MHE():
         ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
         ocp.solver_options.integrator_type = "ERK"
         ocp.solver_options.print_level = 0
+        ocp.solver_options.nlp_solver_ext_qp_res = 1
 
         ocp.code_export_directory = "mhe_c_code"
         name = "acados_mhe.json"
