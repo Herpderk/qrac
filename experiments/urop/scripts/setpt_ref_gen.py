@@ -3,8 +3,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-from qrac.models import Crazyflie
-from qrac.trajectory import Circle
+from qrac.models import Crazyflie, Quadrotor
 from qrac.control import NMPC
 
 
@@ -24,14 +23,34 @@ def main():
     figname = "/home/derek/dev/my-repos/qrac/experiments/urop/figures/setpt_xref.png"
 
 
-    # init model
-    model = Crazyflie(Ax=0, Ay=0, Az=0)
+    # accurate model
+    acc = Crazyflie(Ax=0, Ay=0, Az=0)
+
+    # inaccurate model
+    m_inacc = 2 * acc.m
+    Ixx_inacc = 10 * acc.Ixx
+    Iyy_inacc = 10 * acc.Iyy
+    Izz_inacc = 10 * acc.Izz
+    Ax_inacc = 0
+    Ay_inacc = 0
+    Az_inacc = 0
+    xB_inacc = acc.xB
+    yB_inacc = acc.yB
+    kf_inacc = acc.kf
+    km_inacc = acc.km
+    u_min_inacc =acc.u_min
+    u_max_inacc =acc.u_max
+    inacc = Quadrotor(
+        m=m_inacc, Ixx=Ixx_inacc,Iyy=Iyy_inacc, Izz=Izz_inacc,
+        Ax=Ax_inacc, Ay=Ay_inacc, Az=Az_inacc, kf=kf_inacc, km=km_inacc,
+        xB=xB_inacc, yB=yB_inacc, u_min=u_min_inacc, u_max=u_max_inacc
+    )
 
 
     # init nmpc
     nmpc = NMPC(
-        model=model, Q=Q, R=R,
-        u_min=model.u_min, u_max=model.u_max,
+        model=inacc, Q=Q, R=R,
+        u_min=inacc.u_min, u_max=inacc.u_max,
         time_step=CTRL_T, num_nodes=NODES,
         rti=False, nlp_max_iter=200, qp_max_iter=100
     )
@@ -43,7 +62,7 @@ def main():
 
 
     # run for predefined number of steps
-    nx = model.nx
+    nx = inacc.nx
     x = setpt
     xset = np.zeros(nx*NODES)
 

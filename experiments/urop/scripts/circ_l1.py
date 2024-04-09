@@ -43,9 +43,9 @@ def main():
     Ixx_true = 10 * inacc.Ixx
     Iyy_true = 10 * inacc.Iyy
     Izz_true = 10 * inacc.Izz
-    Ax_true = 0
-    Ay_true = 0
-    Az_true = 0
+    Ax_true = 0.01
+    Ay_true = 0.01
+    Az_true = 0.02
     xB_true = inacc.xB
     yB_true = inacc.yB
     kf_true = inacc.kf

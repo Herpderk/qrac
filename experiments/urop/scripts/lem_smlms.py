@@ -17,7 +17,7 @@ def main():
 
     # estimator settings
     U_GAIN = 1000
-    P_TOL = np.array([2, 1000, 1000, 1000, 0.02, 0.02, 0.02])
+    P_TOL = np.array([0.2, 0.02,0.02,0.02, 2000,2000,2000, 0.02,0.02,0.02])
     D_MAX = np.array([
         0,0,0, 0,0,0, 4,4,4, 4,4,4,
     ])
@@ -45,12 +45,12 @@ def main():
 
     # true model
     m_true = 2 * inacc.m
-    Ixx_true = 4 * inacc.Ixx
-    Iyy_true = 4 * inacc.Iyy
-    Izz_true = 4 * inacc.Izz
-    Ax_true = 0
-    Ay_true = 0
-    Az_true = 0
+    Ixx_true = 10 * inacc.Ixx
+    Iyy_true = 10 * inacc.Iyy
+    Izz_true = 10 * inacc.Izz
+    Ax_true = 0.01
+    Ay_true = 0.01
+    Az_true = 0.02
     xB_true = inacc.xB
     yB_true = inacc.yB
     kf_true = inacc.kf
@@ -64,24 +64,25 @@ def main():
     )
 
     # define realistic parameter bounds
-    # moments of inertia bounds based on max moment of x5
-    p_min = np.zeros(7)
+    p_min = np.zeros(10)
     p_min[0] = 1 / (2*inacc.m)
-    p_min[1] = 1 / (4*inacc.Ixx)
-    p_min[2] = 1 / (4*inacc.Iyy)
-    p_min[3] = 1 / (4*inacc.Izz)
-    p_min[4] = (inacc.Izz - 4*inacc.Iyy) / inacc.Ixx
-    p_min[5] = (inacc.Ixx - 4*inacc.Izz) / inacc.Iyy
-    p_min[6] = (inacc.Iyy - 4*inacc.Ixx) / inacc.Izz
+    p_min[1:4] = np.zeros(3)
+    p_min[4] = 1 / (20*inacc.Ixx)
+    p_min[5] = 1 / (20*inacc.Iyy)
+    p_min[6] = 1 / (20*inacc.Izz)
+    p_min[7] = (inacc.Izz - 20*inacc.Iyy) / inacc.Ixx
+    p_min[8] = (inacc.Ixx - 20*inacc.Izz) / inacc.Iyy
+    p_min[9] = (inacc.Iyy - 20*inacc.Ixx) / inacc.Izz
 
-    p_max = np.zeros(7)
+    p_max = np.zeros(10)
     p_max[0] = 1 / inacc.m
-    p_max[1] = 1 / (inacc.Ixx)
-    p_max[2] = 1 / (inacc.Iyy)
-    p_max[3] = 1 / (inacc.Iyy)
-    p_max[4] = (4*inacc.Izz - inacc.Iyy) / inacc.Ixx
-    p_max[5] = (4*inacc.Ixx - inacc.Izz) / inacc.Iyy
-    p_max[6] = (4*inacc.Iyy - inacc.Ixx) / inacc.Izz
+    p_max[1:4] = 0.5 * np.ones(3)
+    p_max[4] = 1 / (inacc.Ixx)
+    p_max[5] = 1 / (inacc.Iyy)
+    p_max[6] = 1 / (inacc.Iyy)
+    p_max[7] = (20*inacc.Izz - inacc.Iyy) / inacc.Ixx
+    p_max[8] = (20*inacc.Ixx - inacc.Izz) / inacc.Iyy
+    p_max[9] = (20*inacc.Iyy - inacc.Ixx) / inacc.Izz
 
 
     # init LMS
@@ -95,7 +96,7 @@ def main():
         model=inacc, estimator=lms,
         param_tol=P_TOL, param_min=p_min, param_max=p_max,
         disturb_min=D_MIN, disturb_max=D_MAX, time_step=CTRL_T,
-        qp_tol=10**-6, max_iter=10
+        qp_tol=10**-6, max_iter=5
     )
 
     # init adaptive mpc

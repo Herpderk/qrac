@@ -16,7 +16,7 @@ def main():
     R = np.diag([0, 0, 0, 0])
 
     # estimator settings
-    Q_MHE = 1 * np.diag([1, 1,1,1, 1,1,1])
+    Q_MHE = 1 * np.diag([1, 1,1,1, 1,1,1, 1,1,1])
     R_MHE = 1 * np.diag([1,1,1, 1,1,1, 1,1,1, 1,1,1])
     NODES_MHE = 20
     MAX_ITER_MHE = 5
@@ -50,9 +50,9 @@ def main():
     Ixx_true = 10 * inacc.Ixx
     Iyy_true = 10 * inacc.Iyy
     Izz_true = 10 * inacc.Izz
-    Ax_true = 0
-    Ay_true = 0
-    Az_true = 0
+    Ax_true = 0.01
+    Ay_true = 0.01
+    Az_true = 0.02
     xB_true = inacc.xB
     yB_true = inacc.yB
     kf_true = inacc.kf
@@ -66,23 +66,25 @@ def main():
     )
 
     # realistic parameter bounds
-    p_min = np.zeros(7)
+    p_min = np.zeros(10)
     p_min[0] = 1 / (2*inacc.m)
-    p_min[1] = 1 / (10*inacc.Ixx)
-    p_min[2] = 1 / (10*inacc.Iyy)
-    p_min[3] = 1 / (10*inacc.Izz)
-    p_min[4] = (inacc.Izz - 10*inacc.Iyy) / inacc.Ixx
-    p_min[5] = (inacc.Ixx - 10*inacc.Izz) / inacc.Iyy
-    p_min[6] = (inacc.Iyy - 10*inacc.Ixx) / inacc.Izz
+    p_min[1:4] = np.zeros(3)
+    p_min[4] = 1 / (20*inacc.Ixx)
+    p_min[5] = 1 / (20*inacc.Iyy)
+    p_min[6] = 1 / (20*inacc.Izz)
+    p_min[7] = (inacc.Izz - 20*inacc.Iyy) / inacc.Ixx
+    p_min[8] = (inacc.Ixx - 20*inacc.Izz) / inacc.Iyy
+    p_min[9] = (inacc.Iyy - 20*inacc.Ixx) / inacc.Izz
 
-    p_max = np.zeros(7)
+    p_max = np.zeros(10)
     p_max[0] = 1 / inacc.m
-    p_max[1] = 1 / (inacc.Ixx)
-    p_max[2] = 1 / (inacc.Iyy)
-    p_max[3] = 1 / (inacc.Iyy)
-    p_max[4] = (10*inacc.Izz - inacc.Iyy) / inacc.Ixx
-    p_max[5] = (10*inacc.Ixx - inacc.Izz) / inacc.Iyy
-    p_max[6] = (10*inacc.Iyy - inacc.Ixx) / inacc.Izz
+    p_max[1:4] = 0.5 * np.ones(3)
+    p_max[4] = 1 / (inacc.Ixx)
+    p_max[5] = 1 / (inacc.Iyy)
+    p_max[6] = 1 / (inacc.Iyy)
+    p_max[7] = (20*inacc.Izz - inacc.Iyy) / inacc.Ixx
+    p_max[8] = (20*inacc.Ixx - inacc.Izz) / inacc.Iyy
+    p_max[9] = (20*inacc.Iyy - inacc.Ixx) / inacc.Izz
 
 
     # init estimator

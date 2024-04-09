@@ -16,7 +16,7 @@ def main():
     R = np.diag([0, 0, 0, 0])
 
     # estimator settings
-    Q_MHE = 1 * np.diag([1, 1,1,1, 1,1,1])
+    Q_MHE = 1 * np.diag([1, 1,1,1, 1,1,1, 1,1,1])
     R_MHE = 1 * np.diag([1,1,1, 1,1,1, 1,1,1, 1,1,1])
     NODES_MHE = 20
     MAX_ITER_MHE = 5
@@ -43,7 +43,7 @@ def main():
 
 
     # accurate model
-    acc = Crazyflie(Ax=0, Ay=0, Az=0)
+    acc = Crazyflie(Ax=0.01, Ay=0.01, Az=0.02)
 
     # inaccurate model
     m_inacc = 2 * acc.m
@@ -66,23 +66,25 @@ def main():
     )
 
     # realistic parameter bounds
-    p_min = np.zeros(7)
+    p_min = np.zeros(10)
     p_min[0] = 1 / (2*acc.m)
-    p_min[1] = 1 / (10*acc.Ixx)
-    p_min[2] = 1 / (10*acc.Iyy)
-    p_min[3] = 1 / (10*acc.Izz)
-    p_min[4] = (acc.Izz - 10*acc.Iyy) / acc.Ixx
-    p_min[5] = (acc.Ixx - 10*acc.Izz) / acc.Iyy
-    p_min[6] = (acc.Iyy - 10*acc.Ixx) / acc.Izz
+    p_min[1:4] = np.zeros(3)
+    p_min[4] = 1 / (20*acc.Ixx)
+    p_min[5] = 1 / (20*acc.Iyy)
+    p_min[6] = 1 / (20*acc.Izz)
+    p_min[7] = (acc.Izz - 20*acc.Iyy) / acc.Ixx
+    p_min[8] = (acc.Ixx - 20*acc.Izz) / acc.Iyy
+    p_min[9] = (acc.Iyy - 20*acc.Ixx) / acc.Izz
 
-    p_max = np.zeros(7)
+    p_max = np.zeros(10)
     p_max[0] = 1 / acc.m
-    p_max[1] = 1 / (acc.Ixx)
-    p_max[2] = 1 / (acc.Iyy)
-    p_max[3] = 1 / (acc.Iyy)
-    p_max[4] = (10*acc.Izz - acc.Iyy) / acc.Ixx
-    p_max[5] = (10*acc.Ixx - acc.Izz) / acc.Iyy
-    p_max[6] = (10*acc.Iyy - acc.Ixx) / acc.Izz
+    p_max[1:4] = 0.5 * np.ones(3)
+    p_max[4] = 1 / (acc.Ixx)
+    p_max[5] = 1 / (acc.Iyy)
+    p_max[6] = 1 / (acc.Iyy)
+    p_max[7] = (20*acc.Izz - acc.Iyy) / acc.Ixx
+    p_max[8] = (20*acc.Ixx - acc.Izz) / acc.Iyy
+    p_max[9] = (20*acc.Iyy - acc.Ixx) / acc.Izz
 
 
     # init estimator

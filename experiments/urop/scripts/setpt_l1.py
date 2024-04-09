@@ -36,7 +36,7 @@ def main():
     disturb = np.load(dfilename)
 
     # accurate model
-    acc = Crazyflie(Ax=0, Ay=0, Az=0)
+    acc = Crazyflie(Ax=0.01, Ay=0.01, Az=0.02)
 
     # inaccurate model
     m_inacc = 2 * acc.m

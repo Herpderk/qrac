@@ -1,9 +1,9 @@
 #!/usr/bin/python3
 
 import numpy as np
-from qrac.models import Crazyflie, Quadrotor, ParameterizedQuadrotor
+from qrac.models import Crazyflie, Quadrotor, AffineQuadrotor
 from qrac.control import AdaptiveNMPC
-from qrac.estimation import MHE
+from qrac.estimation import MHE, SetMembershipEstimator
 from qrac.sim import MinimalSim
 
 
@@ -16,9 +16,10 @@ def main():
     R = np.diag([0, 0, 0, 0])
 
     # estimator settings
-    Q_MHE = 1 * np.diag([1, 1,1,1, 1,1,1])
+    P_TOL = np.array([0.2, 0.02,0.02,0.02, 2000,2000,2000, 0.02,0.02,0.02])
+    Q_MHE = 1 * np.diag([1, 1,1,1, 1,1,1, 1,1,1])
     R_MHE = 1 * np.diag([1,1,1, 1,1,1, 1,1,1, 1,1,1])
-    NODES_MHE = 20
+    NODES_MHE = 10
     MAX_ITER_MHE = 5
     D_MAX = np.array([
         0,0,0, 0,0,0, 4,4,4, 4,4,4,
@@ -32,8 +33,8 @@ def main():
     xfilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/lem_xref.npy"
     ufilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/lem_uref.npy"
     dfilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/lem_d.npy"
-    trajname = "/home/derek/dev/my-repos/qrac/experiments/urop/data/lem_mhe_traj.npy"
-    figname = "/home/derek/dev/my-repos/qrac/experiments/urop/figures/lem_mhe.png"
+    trajname = "/home/derek/dev/my-repos/qrac/experiments/urop/data/lem_smmhe_traj.npy"
+    figname = "/home/derek/dev/my-repos/qrac/experiments/urop/figures/lem_smmhe.png"
 
 
     # load in time optimal trajectory
@@ -65,20 +66,27 @@ def main():
         xB=xB_true, yB=yB_true, u_min=u_min_true, u_max=u_max_true
     )
 
-    # realistic parameter bounds
-    p_min = np.zeros(7)
-    p_min[0] = inacc.m
+   
+    # define realistic parameter bounds
+    p_min = np.zeros(10)
+    p_min[0] = 1 / (2*inacc.m)
     p_min[1:4] = np.zeros(3)
-    p_min[4] = inacc.Ixx
-    p_min[5] = inacc.Iyy
-    p_min[6] = inacc.Izz
+    p_min[4] = 1 / (20*inacc.Ixx)
+    p_min[5] = 1 / (20*inacc.Iyy)
+    p_min[6] = 1 / (20*inacc.Izz)
+    p_min[7] = (inacc.Izz - 20*inacc.Iyy) / inacc.Ixx
+    p_min[8] = (inacc.Ixx - 20*inacc.Izz) / inacc.Iyy
+    p_min[9] = (inacc.Iyy - 20*inacc.Ixx) / inacc.Izz
 
-    p_max = np.zeros(7)
-    p_max[0] = 2 * inacc.m
-    p_max[1:4] = 0.03 * np.ones(3)
-    p_max[4] = 20 * inacc.Ixx
-    p_max[5] = 20 * inacc.Iyy
-    p_max[6] = 20 * inacc.Izz
+    p_max = np.zeros(10)
+    p_max[0] = 1 / inacc.m
+    p_max[1:4] = 0.5 * np.ones(3)
+    p_max[4] = 1 / (inacc.Ixx)
+    p_max[5] = 1 / (inacc.Iyy)
+    p_max[6] = 1 / (inacc.Iyy)
+    p_max[7] = (20*inacc.Izz - inacc.Iyy) / inacc.Ixx
+    p_max[8] = (20*inacc.Ixx - inacc.Izz) / inacc.Iyy
+    p_max[9] = (20*inacc.Iyy - inacc.Ixx) / inacc.Izz
 
 
     # init estimator
@@ -87,13 +95,21 @@ def main():
         param_min=p_min, param_max=p_max,
         disturb_min=D_MIN, disturb_max=D_MAX,
         time_step=CTRL_T, num_nodes=NODES_MHE,
-        rti=True, nonlinear=True,
+        rti=True, nonlinear=False,
         nlp_max_iter=1, qp_max_iter=MAX_ITER_MHE
+    )
+
+    # init set-membership
+    sm = SetMembershipEstimator(
+        model=inacc, estimator=mhe,
+        param_tol=P_TOL, param_min=p_min, param_max=p_max,
+        disturb_min=D_MIN, disturb_max=D_MAX, time_step=CTRL_T,
+        qp_tol=10**-6, max_iter=5
     )
 
     # init mpc
     anmpc = AdaptiveNMPC(
-        model=inacc, estimator=mhe, Q=Q, R=R,
+        model=inacc, estimator=sm, Q=Q, R=R,
         u_min=inacc.u_min, u_max=inacc.u_max, time_step=CTRL_T,
         num_nodes=NODES, real_time=False, rti=True,
         nlp_max_iter=1, qp_max_iter=MAX_ITER_NMPC
@@ -135,8 +151,10 @@ def main():
         print(f"x: {x}")
         print(f"sim time: {(k+1)*CTRL_T}\n")
 
-    print(f"acc params:\n{ParameterizedQuadrotor(acc).get_parameters()}")
-    print(f"inacc params:\n{ParameterizedQuadrotor(inacc).get_parameters()}")
+    print(f"init param min: \n{p_min}")
+    print(f"init param max: \n{p_max}")
+    print(f"acc params:\n{AffineQuadrotor(acc).get_parameters()}")
+    print(f"inacc params:\n{AffineQuadrotor(inacc).get_parameters()}")
 
 
     # save trajectory data
