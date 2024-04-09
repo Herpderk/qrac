@@ -182,12 +182,12 @@ class ParameterizedQuadrotor(Quadrotor):
             model.xB, model.yB, model.u_min, model.u_max,
             "Nonlinear_Parameterized_Quadrotor"
         )
-        self.np = 4
+        self.np = 7
         self._get_param_dynamics()
 
     def get_parameters(self) -> np.ndarray:
         param = np.array([
-            self.m, #self.Ax, self.Ay, self.Az,
+            self.m, self.Ax, self.Ay, self.Az,
             self.Ixx, self.Iyy, self.Izz
         ])
         return param
@@ -210,8 +210,8 @@ class ParameterizedQuadrotor(Quadrotor):
     def _get_param_dynamics(self) -> None:
         self.p = cs.SX.sym("p", self.np)
         m = self.p[0]
-        A = cs.diag(cs.vertcat(self.Ax, self.Ay, self.Az))
-        J = cs.SX(cs.diag(self.p[1:4]))
+        A = cs.diag(self.p[1:4])
+        J = cs.diag(self.p[4:7])
 
         # continuous-time dynamics
         v = self.x[6:9]
@@ -235,13 +235,13 @@ class AffineQuadrotor(Quadrotor):
             "Parameter_Affine_Quadrotor"
         )
         #self.np = 10
-        self.np = 7
+        self.np = 10
         self._get_param_affine_dynamics()
 
     def get_parameters(self) -> np.ndarray:
         param = np.array([
-            1/self.m, #self.Ax/self.m,
-            #self.Ay/self.m, self.Az/self.m,
+            1/self.m, self.Ax/self.m,
+            self.Ay/self.m, self.Az/self.m,
             1/self.Ixx, 1/self.Iyy, 1/self.Izz,
             (self.Izz-self.Iyy)/self.Ixx,
             (self.Ixx-self.Izz)/self.Iyy,
@@ -266,13 +266,13 @@ class AffineQuadrotor(Quadrotor):
 
     def _get_param_affine_dynamics(self) -> None:
         self.p = cs.SX.sym("p", self.np)
+        #A = cs.diag(cs.vertcat(self.Ax, self.Ay, self.Az))
 
         vels = self.x[6:9]
         p = self.x[9]
         q = self.x[10]
         r = self.x[11]
-        A = cs.diag(cs.vertcat(self.Ax, self.Ay, self.Az))
-
+        
         self.F = cs.SX(cs.vertcat(
             vels,
             cs.inv(self.W) @ cs.vertcat(p,q,r),
@@ -296,8 +296,9 @@ class AffineQuadrotor(Quadrotor):
         self.G = cs.SX(cs.vertcat(
             cs.SX.zeros(6, self.np),
             cs.horzcat(
-                self.R@self.T - A@vels,
-                cs.SX.zeros(3, self.np-1)
+                self.R@self.T, #- A@vels,
+                cs.diag(-vels),
+                cs.SX.zeros(3, self.np-4)
             ),
             cs.horzcat(
                 cs.SX.zeros(3, self.np-6),
