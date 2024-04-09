@@ -78,7 +78,7 @@ class SetMembershipEstimator:
         )
         self._x = x
         print(f"param min: {p_min}")
-        print(f"param max: {p_max}")
+        print(f"param max: {p_max}\n")
         if timer:
             et = time.perf_counter()
             print(f"sm runtime: {et - st}")
@@ -136,7 +136,7 @@ class SetMembershipEstimator:
         Gd = np.array(self._Gd(xprev, u))
         G = np.block([[Gd], [-Gd]])
         h = np.round(
-            np.block([x-Fd-self._d_min, -x+Fd+self._d_max]), 2
+            np.block([x-Fd-self._d_min, -x+Fd+self._d_max]), 3
         )
 
         if is_max:
@@ -158,15 +158,6 @@ class SetMembershipEstimator:
             else:
                 return self._p_min[idx]
 
-    def _update_param_bds(
-        self,
-        param_min: np.ndarray,
-        param_max: np.ndarray,
-    ) -> None:
-        self._p_min = param_min
-        self._p_max = param_max
-
-
 class LMS():
     def __init__(
         self,
@@ -181,7 +172,7 @@ class LMS():
         self._nx = model.nx
         model_aug = AffineQuadrotor(model)
         self._Fd, self._Gd, self._Gd_T = \
-            self._get_discrete_dynamics(model_aug, self._nx, time_step)
+            self._discretize(model_aug, self._nx, time_step)
 
         self._np = model_aug.np
         self._mu = update_gain
@@ -195,7 +186,7 @@ class LMS():
     def is_nonlinear(self) -> bool:
         return False
 
-    def _get_discrete_dynamics(
+    def _discretize(
         self,
         model: AffineQuadrotor,
         nx: int,
@@ -230,11 +221,10 @@ class LMS():
             p=p_lms, p_min=param_min, p_max=param_max
         )
         self._x = x
-        print(f"params: {p_proj}\n")
         if timer:
             et = time.perf_counter()
             print(f"LMS runtime: {et - st}")
-        print(f"\nparams: {p_proj}\n")
+        print(f"params: {p_proj}\n")
         return p_proj
 
     def _solve_proj(
