@@ -77,7 +77,7 @@ class LemniScate():
         translation: List
     ) -> cs.Function:
         assert len(axes) == 2
-        len(translation) == 3
+        assert len(translation) == 3
         t = cs.SX.sym("t")
         pos = cs.SX.sym("pos_ang", 3)
 
