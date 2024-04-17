@@ -226,13 +226,13 @@ class NMPC:
 
         # state constraints: yaw
         ocp.constraints.idxbx = np.array(
-            [2, 3, 4, 5,]
+            [2, 3, 4, 5, 6]
         )
         ocp.constraints.lbx = np.array(
-            [0, -np.pi/2, -np.pi/2, 0,]
+            [0, -1, -1, -1, -1,]
         )
         ocp.constraints.ubx = np.array(
-            [10**10, np.pi/2, np.pi/2, 2*np.pi,]
+            [10**10, 1, 1, 1, 1,]
         )
         ocp.constraints.idxbx_e = ocp.constraints.idxbx
         ocp.constraints.lbx_e = ocp.constraints.lbx

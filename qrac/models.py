@@ -71,9 +71,13 @@ class Quadrotor():
         x = cs.SX.sym("x")
         y = cs.SX.sym("y")
         z = cs.SX.sym("z")
-        phi = cs.SX.sym("phi")     # roll
-        theta = cs.SX.sym("theta") # pitch
-        psi = cs.SX.sym("psi")     # yaw
+        #phi = cs.SX.sym("phi")     # roll
+        #theta = cs.SX.sym("theta") # pitch
+        #psi = cs.SX.sym("psi")     # yaw
+        q0 = cs.SX.sym("q0")
+        q1 = cs.SX.sym("q1")
+        q2 = cs.SX.sym("q2")
+        q3 = cs.SX.sym("q3")
         x_dot = cs.SX.sym("x_dot")     # time-derivatives
         y_dot = cs.SX.sym("y_dot")
         z_dot = cs.SX.sym("z_dot")
@@ -81,16 +85,17 @@ class Quadrotor():
         q = cs.SX.sym("q")
         r = cs.SX.sym("r")
         self.x = cs.SX(cs.vertcat(
-            x, y, z, phi, theta, psi,\
+            x, y, z, q0, q1, q2, q3,
             x_dot, y_dot, z_dot, p, q, r
         ))
-
+        '''
         # transformation from inertial to body frame ang vel
         self.W = cs.SX(cs.vertcat(
             cs.horzcat(1, 0, -cs.sin(theta)),
             cs.horzcat(0, cs.cos(phi), cs.cos(theta)*cs.sin(phi)),
             cs.horzcat(0, -cs.sin(phi), cs.cos(theta)*cs.cos(phi)),
         ))
+        
 
         # rotation matrix from body frame to inertial frame
         Rx = cs.SX(cs.vertcat(
@@ -109,7 +114,12 @@ class Quadrotor():
             cs.horzcat(          0,               0,    1),
         ))
         self.R = Rz @ Ry @ Rx
-
+        '''
+        self.R = cs.SX(cs.vertcat(
+            cs.horzcat( 1-2*(q2**2+q3**2), 2*(q1*q2-q0*q3), 2*(q1*q3+q0*q2) ),
+            cs.horzcat( 2*(q1*q2+q0*q3), 1-2*(q1**2+q3**2), 2*(q2*q3-q0*q1) ),
+            cs.horzcat( 2*(q1*q3-q0*q2), 2*(q2*q3-q0*q1), 1-2*(q1**2+q2**2) ),
+        ))
         # drag terms
         self.A = cs.SX(np.diag([self.Ax, self.Ay, self.Az]))
 
@@ -133,11 +143,14 @@ class Quadrotor():
         ))
 
         # continuous-time dynamics
+        qv = cs.SX(cs.vertcat(q1,q2,q3))
         v = cs.SX(cs.vertcat(x_dot, y_dot, z_dot))
         w_B = cs.SX(cs.vertcat(p, q, r))
         self.xdot = cs.SX(cs.vertcat(
             v,
-            cs.inv(self.W) @ w_B,
+            #cs.inv(self.W) @ w_B,
+            -cs.dot(qv, 0.5*w_B),
+            q0*0.5*w_B + cs.cross(qv,w_B),
             (self.R@self.T - self.A@v)/self.m + self.g,
             cs.inv(self.J) @ (self.B@self.u - cs.cross(w_B, self.J@w_B))
         ))

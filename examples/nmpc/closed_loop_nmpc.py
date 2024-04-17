@@ -8,11 +8,11 @@ import numpy as np
 
 
 def run():
-    SIM_TIME = 30
-    SIM_T = 0.0005
-    CTRL_T = 0.005
-    NODES = 75
-    Q = np.diag([1,1,1, 1,1,1, 1,1,1, 1,1,1,])
+    SIM_TIME = 20
+    SIM_T = 0.001
+    CTRL_T = 0.01
+    NODES = 100
+    Q = np.diag([10,10,10, 1,1,1,1, 1,1,1, 1,1,1,])
     R = np.diag([0, 0, 0, 0])
 
     # inaccurate model
@@ -36,10 +36,11 @@ def run():
     )
 
     # define a circular trajectory
-    traj = Circle(v=4, r=4, alt=4)
+    traj = Circle(v=2, r=1, alt=1)
 
     
     x = np.zeros(nx)
+    x[3] = 1
     xset = np.zeros(nx*NODES)
     for k in range(steps):
         t = k*CTRL_T
