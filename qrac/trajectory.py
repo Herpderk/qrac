@@ -29,16 +29,21 @@ class Circle():
     ) -> cs.Function:
         t = cs.SX.sym("t")
         k = v / r
-        pos_ang = cs.SX(cs.vertcat(
+        pos = cs.SX(cs.vertcat(
             r*cs.cos(k*t),
             r*cs.sin(k*t),
             alt,
-            cs.SX.zeros(3,1)
         ))
-        vels = cs.SX(cs.jacobian(pos_ang, t))
+        quat = cs.SX(cs.vertcat(
+            1, cs.SX.zeros(3)
+        ))
+        vel = cs.SX(cs.jacobian(pos, t))
+        angvel = cs.SX.zeros(3)
         traj = cs.SX(cs.vertcat(
-            pos_ang,
-            vels,
+            pos,
+            quat,
+            vel,
+            angvel
         ))
         traj_func = cs.Function("trajectory", [t], [traj])
         return traj_func
@@ -72,7 +77,7 @@ class LemniScate():
         translation: List
     ) -> cs.Function:
         assert len(axes) == 2
-        len(translation) == 3
+        assert len(translation) == 3
         t = cs.SX.sym("t")
         pos = cs.SX.sym("pos_ang", 3)
 
@@ -86,13 +91,16 @@ class LemniScate():
             else:
                 pos[ax] = translation[ax]
 
-        pos_ang = cs.SX(cs.vertcat(
-            pos, cs.SX.zeros(3)
+        quat = cs.SX(cs.vertcat(
+            1, cs.SX.zeros(3)
         ))
-        vels = cs.SX(cs.jacobian(pos_ang, t))
+        vel = cs.SX(cs.jacobian(pos, t))
+        angvel = cs.SX(cs.SX.zeros(3))
         traj = cs.SX(cs.vertcat(
-            pos_ang,
-            vels,
+            pos,
+            quat,
+            vel,
+            angvel,
         ))
         traj_func = cs.Function("trajectory", [t], [traj])
         return traj_func

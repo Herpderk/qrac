@@ -5,15 +5,11 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from qrac.models import Crazyflie, Quadrotor
 from qrac.control import NMPC
+from consts import PREDICT_TIME, CTRL_T, Q_TRAJ, R_TRAJ
 
 
 def main():
-    # nmpc settings
-    PREDICT_TIME = 30
-    CTRL_T = 0.01
     NODES = int(round(PREDICT_TIME / CTRL_T))
-    Q = np.diag([20,20,20, 1,1,1, 1,1,1, 1,1,1,])
-    R = np.diag([0, 0, 0, 0])
 
 
     # traj settings
@@ -49,7 +45,7 @@ def main():
 
     # init nmpc
     nmpc = NMPC(
-        model=inacc, Q=Q, R=R,
+        model=inacc, Q=Q_TRAJ, R=R_TRAJ,
         u_min=inacc.u_min, u_max=inacc.u_max,
         time_step=CTRL_T, num_nodes=NODES,
         rti=False, nlp_max_iter=200, qp_max_iter=100
@@ -57,12 +53,13 @@ def main():
 
 
     # define a setpoint
-    setpt = np.zeros(12)
+    nx = inacc.nx
+    setpt = np.zeros(nx)
     setpt[2] = ALT
+    setpt[3] = 1
 
 
     # run for predefined number of steps
-    nx = inacc.nx
     x = setpt
     xset = np.zeros(nx*NODES)
 

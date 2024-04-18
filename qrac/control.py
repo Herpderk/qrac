@@ -226,13 +226,13 @@ class NMPC:
 
         # state constraints: yaw
         ocp.constraints.idxbx = np.array(
-            [2, 3, 4, 5,]
+            [2, 3, 4, 5, 6]
         )
         ocp.constraints.lbx = np.array(
-            [0, -np.pi/2, -np.pi/2, 0,]
+            [0, -1, -1, -1, -1,]
         )
         ocp.constraints.ubx = np.array(
-            [10**10, np.pi/2, np.pi/2, 2*np.pi,]
+            [10**10, 1, 1, 1, 1,]
         )
         ocp.constraints.idxbx_e = ocp.constraints.idxbx
         ocp.constraints.lbx_e = ocp.constraints.lbx
@@ -285,19 +285,19 @@ class NMPC:
             axs[1], traj[:, 0:3], t, interp_N, legend,
             "position (m)"
         )
-        legend = ["roll", "pitch", "yaw"]
+        legend = ["q0", "q1", "q2", "q3"]
         self._plot_trajectory(
-            axs[2], traj[:, 3:6], t, interp_N, legend,
+            axs[2], traj[:, 3:7], t, interp_N, legend,
             "orientation (rad)"
         )
         legend = ["xdot", "ydot", "zdot"]
         self._plot_trajectory(
-            axs[3], traj[:, 6:9], t, interp_N, legend,
+            axs[3], traj[:, 7:10], t, interp_N, legend,
             "velocity (m/s)"
         )
         legend = ["roll rate", "pitch rate", "yaw rate"]
         self._plot_trajectory(
-            axs[4], traj[:, 9:12], t, interp_N, legend,
+            axs[4], traj[:, 10:13], t, interp_N, legend,
             "body frame ang vel (rad/s)",
         )
 

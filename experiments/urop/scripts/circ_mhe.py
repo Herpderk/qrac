@@ -5,29 +5,11 @@ from qrac.models import Crazyflie, Quadrotor, ParameterizedQuadrotor
 from qrac.control import AdaptiveNMPC
 from qrac.estimation import MHE
 from qrac.sim import MinimalSim
+from consts import CTRL_T, SIM_T, NODES, MAX_ITER_NMPC, Q, R,\
+                    Q_MHE_NONLIN, R_MHE, D_MAX, D_MIN, NODES_MHE, MAX_ITER_MHE
 
 
 def main():
-    # mpc settings
-    CTRL_T = 0.01
-    NODES = 40
-    MAX_ITER_NMPC = 5
-    Q = np.diag([4,4,4, 2,2,2, 1,1,1, 1,1,1,])
-    R = np.diag([0, 0, 0, 0])
-
-    # estimator settings
-    Q_MHE = 1 * np.diag([1, 1,1,1, 1,1,1])
-    R_MHE = 1 * np.diag([1,1,1, 1,1,1, 1,1,1, 1,1,1])
-    NODES_MHE = 20
-    MAX_ITER_MHE = 5
-    D_MAX = np.array([
-        0,0,0, 0,0,0, 4,4,4, 4,4,4,
-    ])
-    D_MIN = -D_MAX
-
-    # sim settings
-    SIM_T = CTRL_T / 10
-
     # file access
     xfilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/circ_xref.npy"
     ufilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/circ_uref.npy"
@@ -84,7 +66,7 @@ def main():
 
     # init estimator
     mhe = MHE(
-        model=inacc, Q=Q_MHE, R=R_MHE,
+        model=inacc, Q=Q_MHE_NONLIN, R=R_MHE,
         param_min=p_min, param_max=p_max,
         disturb_min=D_MIN, disturb_max=D_MAX,
         time_step=CTRL_T, num_nodes=NODES_MHE,

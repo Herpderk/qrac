@@ -5,30 +5,12 @@ from qrac.models import Crazyflie, Quadrotor, AffineQuadrotor
 from qrac.control import AdaptiveNMPC
 from qrac.estimation import MHE, SetMembershipEstimator
 from qrac.sim import MinimalSim
+from consts import CTRL_T, SIM_T, Q, R, NODES, MAX_ITER_NMPC,\
+                    D_MAX, D_MIN, P_TOL, MAX_ITER_SM,\
+                    Q_MHE_LIN, R_MHE, NODES_MHE, MAX_ITER_MHE
 
 
 def main():
-    # mpc settings
-    CTRL_T = 0.01
-    NODES = 40
-    MAX_ITER_NMPC = 5
-    Q = np.diag([4,4,4, 2,2,2, 1,1,1, 1,1,1,])
-    R = np.diag([0, 0, 0, 0])
-
-    # estimator settings
-    P_TOL = np.array([0.2, 0.02,0.02,0.02, 2000,2000,2000, 0.02,0.02,0.02])
-    Q_MHE = 1 * np.diag([1, 1,1,1, 1,1,1, 1,1,1])
-    R_MHE = 1 * np.diag([1,1,1, 1,1,1, 1,1,1, 1,1,1])
-    NODES_MHE = 10
-    MAX_ITER_MHE = 5
-    D_MAX = np.array([
-        0,0,0, 0,0,0, 4,4,4, 4,4,4,
-    ])
-    D_MIN = -D_MAX
-
-    # sim settings
-    SIM_T = CTRL_T / 10
-
     # file access
     xfilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/circ_xref.npy"
     ufilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/circ_uref.npy"
@@ -90,7 +72,7 @@ def main():
 
     # init estimator
     mhe = MHE(
-        model=inacc, Q=Q_MHE, R=R_MHE,
+        model=inacc, Q=Q_MHE_LIN, R=R_MHE,
         param_min=p_min, param_max=p_max,
         disturb_min=D_MIN, disturb_max=D_MAX,
         time_step=CTRL_T, num_nodes=NODES_MHE,
@@ -104,7 +86,7 @@ def main():
         model=inacc, estimator=mhe,
         param_tol=P_TOL, param_min=p_min, param_max=p_max,
         disturb_min=D_MIN, disturb_max=D_MAX, time_step=CTRL_T,
-        qp_tol=10**-6, max_iter=5
+        qp_tol=10**-6, max_iter=MAX_ITER_SM
     )
     
 

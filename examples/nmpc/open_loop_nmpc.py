@@ -10,7 +10,7 @@ def main():
     model = Crazyflie(Ax=0, Ay=0, Az=0)
 
     # initialize controller
-    Q = np.diag([1,1,1, 1,1,1, 1,1,1, 1,1,1])
+    Q = np.diag([1,1,1, 1,1,1,1, 1,1,1, 1,1,1])
     R = np.diag([0, 0, 0, 0])
     u_min = model.u_min
     u_max = model.u_max
@@ -22,10 +22,11 @@ def main():
         time_step=control_T, num_nodes=num_nodes, rti=rti,)
 
     # run a single control loop with trajectory prediction
-    x0 = np.zeros(12)
+    x0 = np.zeros(13)
+    x0[3] = 1
     # the setpoint must span the entire prediction horizon
     x_set = np.tile(
-        np.array([2,-2, 4, 0,0,0, 0,0,0, 0,0,0]), num_nodes)
+        np.array([2,-2, 4, 1,0,0,0, 0,0,0, 0,0,0]), num_nodes)
     mpc.get_trajectory(x0, x_set, timer=True, visuals=True)
 
 
