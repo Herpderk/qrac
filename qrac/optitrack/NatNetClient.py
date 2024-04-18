@@ -63,8 +63,8 @@ class NatNetClient:
 
     def __init__(
         self,
-        rigid_body_cb: function,
-        new_frame_cb: function,
+        rigid_body_cb,
+        new_frame_cb,
         server_addr="127.0.0.1",
         local_addr="127.0.0.1",
         multicast_addr="239.255.42.99",
@@ -1640,7 +1640,7 @@ class NatNetClient:
 
             offset_tmp, mocap_data = self.__unpack_mocap_data( data[offset:], packet_size, major, minor )
             offset += offset_tmp
-            print("MoCap Frame: %d\n"%(mocap_data.prefix_data.frame_number))
+            #print("MoCap Frame: %d\n"%(mocap_data.prefix_data.frame_number))
             # get a string version of the data for output
             mocap_data_str=mocap_data.get_as_string()
             if print_level >= 1:
