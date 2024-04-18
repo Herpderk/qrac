@@ -5,23 +5,11 @@ from qrac.models import Quadrotor, Crazyflie
 from qrac.control import NMPC
 from qrac.control import L1Augmentation
 from qrac.sim import MinimalSim
+from consts import CTRL_T, SIM_T, NODES, MAX_ITER_NMPC, Q, R,\
+                    A_GAIN, W
 
 
 def main():
-    # mpc settings
-    CTRL_T = 0.01
-    NODES = 40
-    MAX_ITER_NMPC = 5
-    Q = np.diag([4,4,4, 2,2,2, 1,1,1, 1,1,1,])
-    R = np.diag([0, 0, 0, 0])
-
-    # L1 settings
-    A_GAIN = 20
-    W = 100
-
-    # sim settings
-    SIM_T = CTRL_T / 10
-
     # file access
     xfilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/setpt_xref.npy"
     ufilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/setpt_uref.npy"

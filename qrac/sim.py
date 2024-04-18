@@ -57,7 +57,7 @@ class MinimalSim():
         d=None,
         timer=False,
     ) -> np.ndarray:
-        if d == None:
+        if type(d) == None:
             d = np.zeros(self._nx)
         u_bd = self._bound_u(u)
         self._solve(x=x, u=u_bd, d=d, timer=timer)

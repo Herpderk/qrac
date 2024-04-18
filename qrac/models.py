@@ -88,44 +88,16 @@ class Quadrotor():
             x, y, z, q0, q1, q2, q3,
             x_dot, y_dot, z_dot, p, q, r
         ))
-        '''
-        # transformation from inertial to body frame ang vel
-        self.W = cs.SX(cs.vertcat(
-            cs.horzcat(1, 0, -cs.sin(theta)),
-            cs.horzcat(0, cs.cos(phi), cs.cos(theta)*cs.sin(phi)),
-            cs.horzcat(0, -cs.sin(phi), cs.cos(theta)*cs.cos(phi)),
-        ))
-        
 
-        # rotation matrix from body frame to inertial frame
-        Rx = cs.SX(cs.vertcat(
-            cs.horzcat(1,            0,            0),
-            cs.horzcat(0,  cs.cos(phi), -cs.sin(phi)),
-            cs.horzcat(0,  cs.sin(phi),  cs.cos(phi)),
-        ))
-        Ry = cs.SX(cs.vertcat(
-            cs.horzcat( cs.cos(theta),  0,  cs.sin(theta)),
-            cs.horzcat(             0,  1,              0),
-            cs.horzcat(-cs.sin(theta),  0,  cs.cos(theta)),
-        ))
-        Rz = cs.SX(cs.vertcat(
-            cs.horzcat(cs.cos(psi),    -cs.sin(psi),    0),
-            cs.horzcat(cs.sin(psi),     cs.cos(psi),    0),
-            cs.horzcat(          0,               0,    1),
-        ))
-        self.R = Rz @ Ry @ Rx
-        '''
         self.R = cs.SX(cs.vertcat(
             cs.horzcat( 1-2*(q2**2+q3**2), 2*(q1*q2-q0*q3), 2*(q1*q3+q0*q2) ),
             cs.horzcat( 2*(q1*q2+q0*q3), 1-2*(q1**2+q3**2), 2*(q2*q3-q0*q1) ),
-            cs.horzcat( 2*(q1*q3-q0*q2), 2*(q2*q3-q0*q1), 1-2*(q1**2+q2**2) ),
+            cs.horzcat( 2*(q1*q3-q0*q2), 2*(q2*q3+q0*q1), 1-2*(q1**2+q2**2) ),
         ))
         # drag terms
         self.A = cs.SX(np.diag([self.Ax, self.Ay, self.Az]))
-
         # Diagonal of inertial matrix
         self.J = cs.SX(np.diag([self.Ixx, self.Iyy, self.Izz]))
-
         # control allocation matrix
         self.B = cs.SX(cs.vertcat(
             self.kf * self.yB.reshape(1, self.yB.shape[0]),
@@ -145,16 +117,16 @@ class Quadrotor():
         # continuous-time dynamics
         qv = cs.SX(cs.vertcat(q1,q2,q3))
         v = cs.SX(cs.vertcat(x_dot, y_dot, z_dot))
-        w_B = cs.SX(cs.vertcat(p, q, r))
+        wB = cs.SX(cs.vertcat(p, q, r))
         self.xdot = cs.SX(cs.vertcat(
             v,
-            #cs.inv(self.W) @ w_B,
-            -cs.dot(qv, 0.5*w_B),
-            q0*0.5*w_B + cs.cross(qv,w_B),
+            #cs.inv(self.W) @ wB,
+            -cs.dot(qv, 0.5*wB),
+            q0*0.5*wB + cs.cross(qv,wB),
             (self.R@self.T - self.A@v)/self.m + self.g,
-            cs.inv(self.J) @ (self.B@self.u - cs.cross(w_B, self.J@w_B))
+            cs.inv(self.J) @ (self.B@self.u - cs.cross(wB, self.J@wB))
         ))
-        
+
         # ocp problem parameter
         self.p = np.array([])
 
@@ -227,11 +199,11 @@ class ParameterizedQuadrotor(Quadrotor):
         J = cs.diag(self.p[4:7])
 
         # continuous-time dynamics
-        v = self.x[6:9]
-        w_B = self.x[9:12]
-        self.xdot[6:12] = cs.SX(cs.vertcat(
+        v = self.x[self.nx-6 : self.nx-3]
+        wB = self.x[self.nx-3 : self.nx]
+        self.xdot[self.nx-6 : self.nx] = cs.SX(cs.vertcat(
             (self.R@self.T - A@v)/m + self.g,
-            cs.inv(J) @ (self.B@self.u - cs.cross(w_B, J@w_B))
+            cs.inv(J) @ (self.B@self.u - cs.cross(wB, J@wB))
         ))
 
 
@@ -247,7 +219,6 @@ class AffineQuadrotor(Quadrotor):
             model.xB, model.yB, model.u_min, model.u_max,
             "Parameter_Affine_Quadrotor"
         )
-        #self.np = 10
         self.np = 10
         self._get_param_affine_dynamics()
 
@@ -278,38 +249,25 @@ class AffineQuadrotor(Quadrotor):
         self.xdot[:self.nu] += d
 
     def _get_param_affine_dynamics(self) -> None:
-        self.p = cs.SX.sym("p", self.np)
-        #A = cs.diag(cs.vertcat(self.Ax, self.Ay, self.Az))
-
-        vels = self.x[6:9]
-        p = self.x[9]
-        q = self.x[10]
-        r = self.x[11]
+        q0 = self.x[self.nx-10]
+        qv = self.x[self.nx-9 : self.nx-6]
+        vels = self.x[self.nx-6 : self.nx-3]
+        wB = self.x[self.nx-3 : self.nx]
+        p = wB[0]
+        q = wB[1]
+        r = wB[2]
         
         self.F = cs.SX(cs.vertcat(
             vels,
-            cs.inv(self.W) @ cs.vertcat(p,q,r),
+            -cs.dot(qv, 0.5*wB),
+            q0*0.5*wB + cs.cross(qv,wB),
             self.g,
             cs.SX.zeros(3),
         ))
-        '''
         self.G = cs.SX(cs.vertcat(
-            cs.SX.zeros(6, self.np),
+            cs.SX.zeros(self.nx-6, self.np),
             cs.horzcat(
-                self.R @ self.T,
-                cs.diag(-vels),
-                cs.SX.zeros(3, 6)
-            ),
-            cs.horzcat(
-                cs.SX.zeros(3, 4),
-                cs.diag(self.B @ self.u),
-                -cs.diag(cs.vertcat(q*r, p*r, p*q))
-            ),
-        ))'''
-        self.G = cs.SX(cs.vertcat(
-            cs.SX.zeros(6, self.np),
-            cs.horzcat(
-                self.R@self.T, #- A@vels,
+                self.R@self.T,
                 cs.diag(-vels),
                 cs.SX.zeros(3, self.np-4)
             ),
@@ -319,6 +277,8 @@ class AffineQuadrotor(Quadrotor):
                 -cs.diag(cs.vertcat(q*r, p*r, p*q))
             ),
         ))
+        
+        self.p = cs.SX.sym("p", self.np)
         self.xdot = self.F + self.G @ self.p
 
 

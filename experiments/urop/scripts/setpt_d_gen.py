@@ -2,19 +2,11 @@
 
 import numpy as np
 from qrac.models import Crazyflie
+from consts import PREDICT_TIME, CTRL_T, D_MAX
 
 
 def main():
-    # sim settings
-    PREDICT_TIME = 30
-    CTRL_T = 0.01
     NODES = int(round(PREDICT_TIME / CTRL_T))
-
-
-    # disturbance settings
-    D_MAX = np.array([
-        0,0,0, 0,0,0, 4,4,4, 4,4,4,
-    ])
     dfilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/setpt_d.npy"
 
 

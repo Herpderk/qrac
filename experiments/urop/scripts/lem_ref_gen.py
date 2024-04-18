@@ -6,21 +6,17 @@ import matplotlib.ticker as ticker
 from qrac.models import Crazyflie
 from qrac.trajectory import LemniScate
 from qrac.control import NMPC
+from consts import PREDICT_TIME, CTRL_T, Q_TRAJ, R_TRAJ
 
 
 def main():
-    # nmpc settings
-    PREDICT_TIME = 30
-    CTRL_T = 0.01
     NODES = int(round(PREDICT_TIME / CTRL_T))
-    Q = np.diag([20,20,20, 1,1,1, 1,1,1, 1,1,1,])
-    R = np.diag([0, 0, 0, 0])
 
 
     # traj settings
-    A = 1
-    B = 2
-    AXES = [0,1]
+    A = 2
+    B = 1.2
+    AXES = [1,0]
     TRANSLATE = [0,0,1]
     xfilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/lem_xref.npy"
     ufilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/lem_uref.npy"
@@ -33,7 +29,7 @@ def main():
 
     # init nmpc
     nmpc = NMPC(
-        model=model, Q=Q, R=R,
+        model=model, Q=Q_TRAJ, R=R_TRAJ,
         u_min=model.u_min, u_max=model.u_max,
         time_step=CTRL_T, num_nodes=NODES,
         rti=False, nlp_max_iter=200, qp_max_iter=100
@@ -49,6 +45,7 @@ def main():
     # run for predefined number of steps
     nx = model.nx
     x = np.zeros(nx)
+    x[3] = 1
     xset = np.zeros(nx*NODES)
 
     for k in range(NODES):

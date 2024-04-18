@@ -37,13 +37,13 @@ class Circle():
         quat = cs.SX(cs.vertcat(
             1, cs.SX.zeros(3)
         ))
-        vels = cs.SX(cs.jacobian(pos, t))
-        angvels = cs.SX.zeros(3)
+        vel = cs.SX(cs.jacobian(pos, t))
+        angvel = cs.SX.zeros(3)
         traj = cs.SX(cs.vertcat(
             pos,
             quat,
-            vels,
-            angvels
+            vel,
+            angvel
         ))
         traj_func = cs.Function("trajectory", [t], [traj])
         return traj_func
@@ -91,13 +91,16 @@ class LemniScate():
             else:
                 pos[ax] = translation[ax]
 
-        pos_ang = cs.SX(cs.vertcat(
-            pos, cs.SX.zeros(3)
+        quat = cs.SX(cs.vertcat(
+            1, cs.SX.zeros(3)
         ))
-        vels = cs.SX(cs.jacobian(pos_ang, t))
+        vel = cs.SX(cs.jacobian(pos, t))
+        angvel = cs.SX(cs.SX.zeros(3))
         traj = cs.SX(cs.vertcat(
-            pos_ang,
-            vels,
+            pos,
+            quat,
+            vel,
+            angvel,
         ))
         traj_func = cs.Function("trajectory", [t], [traj])
         return traj_func

@@ -285,19 +285,19 @@ class NMPC:
             axs[1], traj[:, 0:3], t, interp_N, legend,
             "position (m)"
         )
-        legend = ["roll", "pitch", "yaw"]
+        legend = ["q0", "q1", "q2", "q3"]
         self._plot_trajectory(
-            axs[2], traj[:, 3:6], t, interp_N, legend,
+            axs[2], traj[:, 3:7], t, interp_N, legend,
             "orientation (rad)"
         )
         legend = ["xdot", "ydot", "zdot"]
         self._plot_trajectory(
-            axs[3], traj[:, 6:9], t, interp_N, legend,
+            axs[3], traj[:, 7:10], t, interp_N, legend,
             "velocity (m/s)"
         )
         legend = ["roll rate", "pitch rate", "yaw rate"]
         self._plot_trajectory(
-            axs[4], traj[:, 9:12], t, interp_N, legend,
+            axs[4], traj[:, 10:13], t, interp_N, legend,
             "body frame ang vel (rad/s)",
         )
 
