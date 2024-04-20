@@ -20,10 +20,79 @@
 
 import sys
 import time
+import threading
+import logging
 import numpy as np
+import cflib
+from cflib.crazyflie import Crazyflie
+from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
+from cflib.crazyflie.log import LogConfig
 from qrac.optitrack.NatNetClient import NatNetClient
 import qrac.optitrack.DataDescriptions
 import qrac.optitrack.MoCapData
+
+
+class CfVelocityInterface():
+    def __init__(
+        self,
+        period_ms: int,
+        uri="radio://0/80/2M/E7E7E7E7E7"
+    ):
+        logging.basicConfig(level=logging.ERROR)
+        cflib.crtp.init_drivers()
+        
+        logger = self._init_logger(period_ms=period_ms)
+        self._thread = threading.Thread(
+            target=self._run_logger, args=(logger, uri)
+        )
+        self._run_flag = threading.Event()
+        self._milli_vel = ()
+        self._milli_ang_vel = ()
+
+    def start(self): 
+        self._thread.start()
+
+    def stop(self):
+        self._run_flag.set()
+        self._thread.join()
+
+    def get_velocity(self):
+        return 0.001*np.array(self._milli_vel)
+
+    def get_angular_velocity(self):
+        return 0.001*np.array(self._milli_ang_vel)
+
+    def _logger_cb(self, timestamp, data, logger):
+        self._milli_vel = (
+            data["stateEstimateZ.vx"],
+            data["stateEstimateZ.vy"],
+            data["stateEstimateZ.vz"],
+        )
+        self._milli_ang_vel = (
+            data["stateEstimateZ.rateRoll"],
+            data["stateEstimateZ.ratePitch"],
+            data["stateEstimateZ.rateYaw"],
+        )
+
+    def _run_logger(self, logger, uri: str):
+        with SyncCrazyflie(uri, cf=Crazyflie()) as scf:
+            scf.cf.log.add_config(logger)
+            logger.data_received_cb.add_callback(self._logger_cb)
+            logger.start()
+            self._run_flag.wait()
+            logger.stop()
+
+    def _init_logger(self, period_ms: int):
+        logger = LogConfig(
+            name="Vel_Estimator", period_in_ms=period_ms
+        )
+        logger.add_variable("stateEstimateZ.vx", "int16_t")
+        logger.add_variable("stateEstimateZ.vy", "int16_t")
+        logger.add_variable("stateEstimateZ.vz", "int16_t")
+        logger.add_variable("stateEstimateZ.rateRoll", "int16_t")
+        logger.add_variable("stateEstimateZ.ratePitch", "int16_t")
+        logger.add_variable("stateEstimateZ.rateYaw", "int16_t")
+        return logger
 
 
 class OptiTrackInterface():
