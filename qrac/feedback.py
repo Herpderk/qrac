@@ -32,7 +32,7 @@ import qrac.optitrack.DataDescriptions
 import qrac.optitrack.MoCapData
 
 
-class CfVelocityInterface():
+class CrazyflieFeedback():
     def __init__(
         self,
         period_ms: int,
@@ -46,35 +46,36 @@ class CfVelocityInterface():
             target=self._run_logger, args=(logger, uri)
         )
         self._run_flag = threading.Event()
-        self._milli_vel = ()
-        self._milli_ang_vel = ()
+        self._verbose = False
+        self._milli_vels = ()
 
-    def start(self): 
+    def start(self, verbose=False):
+        self._verbose = verbose
         self._thread.start()
 
     def stop(self):
         self._run_flag.set()
         self._thread.join()
 
-    def get_velocity(self):
-        return 0.001*np.array(self._milli_vel)
-
-    def get_angular_velocity(self):
-        return 0.001*np.array(self._milli_ang_vel)
+    def get_velocities(self):
+        return 0.001*np.array(self._milli_vels)
 
     def _logger_cb(self, timestamp, data, logger):
-        self._milli_vel = (
+        self._milli_vels = (
             data["stateEstimateZ.vx"],
             data["stateEstimateZ.vy"],
             data["stateEstimateZ.vz"],
-        )
-        self._milli_ang_vel = (
             data["stateEstimateZ.rateRoll"],
             data["stateEstimateZ.ratePitch"],
             data["stateEstimateZ.rateYaw"],
         )
+        if self._verbose:
+            print(f"\nvel: {self._milli_vels[0:3]}")
+            print(f"ang vel: {self._milli_vels[3:6]}\n")
+
 
     def _run_logger(self, logger, uri: str):
+        print("Starting Crazyflie Logger...")
         with SyncCrazyflie(uri, cf=Crazyflie()) as scf:
             scf.cf.log.add_config(logger)
             logger.data_received_cb.add_callback(self._logger_cb)
@@ -95,7 +96,7 @@ class CfVelocityInterface():
         return logger
 
 
-class OptiTrackInterface():
+class OptiTrackFeedback():
     def __init__(
         self,
         frame_id: int,
@@ -105,10 +106,9 @@ class OptiTrackInterface():
         command_port=1510,
         data_port=1511,
         use_multicast=True,
-        verbose=False,
     ):
         self._id = frame_id
-        self._verbose = verbose
+        self._verbose = False
         self._pos = ()
         self._q = ()
 
@@ -123,17 +123,18 @@ class OptiTrackInterface():
             use_multicast=use_multicast
         )
 
-    def start(self):
+    def start(self, verbose=False):
+        self._verbose = verbose
         self._run_client()
 
     def stop(self):
         self._client.shutdown()
 
-    def get_position(self):
-        return np.array(self._pos)
-
-    def get_orientation(self):
-        return np.array(self._q)
+    def get_pose(self):
+        return np.concatenate((
+            self._pos,
+            self._q
+        ))
 
     # This is a callback function that gets connected to the NatNet client. It is called once per rigid body per frame
     def _rigid_body_cb(self, frame_id, pos, quat):
@@ -141,8 +142,7 @@ class OptiTrackInterface():
             pass
         else:
             self._pos = pos
-            self._q = quat
-
+            self._q = (quat[3], quat[0], quat[1], quat[2])
             if self._verbose:
                 print( "Received frame for rigid body", frame_id )
                 print(f"pos: {pos}")
@@ -166,6 +166,7 @@ class OptiTrackInterface():
     def _run_client(self):
         # Start up the streaming client now that the callbacks are set up.
         # This will run perpetually, and operate on a separate thread.
+        print("Starting NatNet client...")
         is_running = self._client.run()
         if not is_running:
             print("ERROR: Could not start streaming client.")
@@ -188,7 +189,6 @@ class OptiTrackInterface():
 
         print_configuration(self._client)
         print("\n")
-        print_commands(self._client.can_change_bitstream_version())
    
 
 def add_lists(totals, totals_tmp):
@@ -233,39 +233,6 @@ def print_configuration(natnet_client):
     #print("data_socket    = %s"%(str(natnet_client.data_socket)))
     print("  PythonVersion    %s"%(sys.version))
 
-
-def print_commands(can_change_bitstream):
-    outstring = "Commands:\n"
-    outstring += "Return Data from Motive\n"
-    outstring += "  s  send data descriptions\n"
-    outstring += "  r  resume/start frame playback\n"
-    outstring += "  p  pause frame playback\n"
-    outstring += "     pause may require several seconds\n"
-    outstring += "     depending on the frame data size\n"
-    outstring += "Change Working Range\n"
-    outstring += "  o  reset Working Range to: start/current/end frame 0/0/end of take\n"
-    outstring += "  w  set Working Range to: start/current/end frame 1/100/1500\n"
-    outstring += "Return Data Display Modes\n"
-    outstring += "  j  print_level = 0 supress data description and mocap frame data\n"
-    outstring += "  k  print_level = 1 show data description and mocap frame data\n"
-    outstring += "  l  print_level = 20 show data description and every 20th mocap frame data\n"
-    outstring += "Change NatNet data stream version (Unicast only)\n"
-    outstring += "  3  Request NatNet 3.1 data stream (Unicast only)\n"
-    outstring += "  4  Request NatNet 4.1 data stream (Unicast only)\n"
-    outstring += "General\n"
-    outstring += "  t  data structures self test (no motive/server interaction)\n"
-    outstring += "  c  print configuration\n"
-    outstring += "  h  print commands\n"
-    outstring += "  q  quit\n"
-    outstring += "\n"
-    outstring += "NOTE: Motive frame playback will respond differently in\n"
-    outstring += "       Endpoint, Loop, and Bounce playback modes.\n"
-    outstring += "\n"
-    outstring += "EXAMPLE: PacketClient [serverIP [ clientIP [ Multicast/Unicast]]]\n"
-    outstring += "         PacketClient \"192.168.10.14\" \"192.168.10.14\" Multicast\n"
-    outstring += "         PacketClient \"127.0.0.1\" \"127.0.0.1\" u\n"
-    outstring += "\n"
-    print(outstring)
 
 def request_data_descriptions(s_client):
     # Request the model definitions
