@@ -1,8 +1,10 @@
 mpc_c_code
 mhe_c_code
+sim_c_code
 c_generated_code
 acados_mpc.json
 acados_mhe.json
 acados_sim.json
 __pycache__
 *.egg-info*
+40.8.0
