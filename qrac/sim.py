@@ -1,15 +1,15 @@
 #!/usr/bin/python3
 
-from acados_template import AcadosSim, AcadosSimSolver
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-import matplotlib.animation as animation
 import time
 import atexit
 import os
 import shutil
 from typing import Tuple
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+import matplotlib.animation as animation
+from acados_template import AcadosSim, AcadosSimSolver, ocp_get_default_cmake_builder
 from qrac.models import Quadrotor, DisturbedQuadrotor
 
 
@@ -57,7 +57,7 @@ class MinimalSim():
         d=None,
         timer=False,
     ) -> np.ndarray:
-        if type(d) == None:
+        if d == None:
             d = np.zeros(self._nx)
         u_bd = self._bound_u(u)
         self._solve(x=x, u=u_bd, d=d, timer=timer)
@@ -198,12 +198,15 @@ class MinimalSim():
         control_step: float,
     ) -> AcadosSimSolver:
         sim = AcadosSim()
+        sim.code_export_directory = "sim_c_code"
         sim.model = model.get_acados_model()
         sim.solver_options.T = control_step
         sim.solver_options.integrator_type = "ERK"
         sim.solver_options.num_stages = 4
         sim.solver_options.num_steps = int(round(control_step / sim_step))
-        solver = AcadosSimSolver(sim)
+
+        builder = ocp_get_default_cmake_builder()
+        solver = AcadosSimSolver(sim, cmake_builder=builder)
         return solver
 
     def _assert(
@@ -230,9 +233,9 @@ class MinimalSim():
         Clean up the acados generated files.
         """
         try:
-            shutil.rmtree("c_generated_code")
+            shutil.rmtree("sim_c_code")
         except:
-            print("failed to delete c_generated_code")
+            print("failed to delete sim_c_code")
         try:
             os.remove("acados_sim.json")
         except:
