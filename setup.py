@@ -7,10 +7,11 @@ setup(
         'qrac', 'qrac.*'
     ]),
     install_requires=[
-        'numpy',
-        'scipy',
-        'casadi',
-        'matplotlib',
-        'acados_template',
+        'numpy==1.26.4',
+        'scipy==1.12.0',
+        'matplotlib==3.8.3',
+        'casadi==3.6.3',
+        'proxsuite==0.6.2',
+        'cflib==0.1.25.1',
     ]
 )
