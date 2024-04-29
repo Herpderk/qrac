@@ -5,11 +5,11 @@ from typing import Tuple
 import atexit
 import shutil
 import os
-from acados_template import AcadosOcpSolver, AcadosOcp
 import casadi as cs
 import numpy as np
 from scipy.linalg import block_diag
 from qpsolvers.solvers.proxqp_ import proxqp_solve_qp
+from acados_template import AcadosOcpSolver, AcadosOcp, ocp_get_default_cmake_builder
 from qrac.models import Quadrotor, AffineQuadrotor, ParameterizedQuadrotor
 
 
@@ -504,14 +504,15 @@ class MHE():
 
         ocp.code_export_directory = "mhe_c_code"
         name = "acados_mhe.json"
+        builder = ocp_get_default_cmake_builder()
 
         if rti:
             ocp.solver_options.nlp_solver_type = "SQP_RTI"
-            solver = AcadosOcpSolver(ocp, json_file=name)
+            solver = AcadosOcpSolver(ocp, json_file=name, cmake_builder=builder)#, build=False, generate=False)
             solver.options_set("rti_phase", 0)
         else:
             ocp.solver_options.nlp_solver_type = "SQP"
-            solver = AcadosOcpSolver(ocp, json_file=name)
+            solver = AcadosOcpSolver(ocp, json_file=name, cmake_builder=builder)
         return solver
 
     def _augment_costs(
