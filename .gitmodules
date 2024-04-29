@@ -1,0 +1,3 @@
+[submodule "external/acados-python-windows"]
+	path = external/acados-python-windows
+	url = https://github.com/Herpderk/acados-python-windows.git
