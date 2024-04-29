@@ -134,9 +134,10 @@ class SetMembershipEstimator:
 
         Fd = np.array(self._Fd(xprev, u)).flatten()
         Gd = np.array(self._Gd(xprev, u))
-        G = np.block([[Gd], [-Gd]])
+        G = np.vstack((Gd, -Gd))
         h = np.round(
-            np.block([x-Fd-self._d_min, -x+Fd+self._d_max]), 3
+            np.hstack([x-Fd-self._d_min, -x+Fd+self._d_max]),
+            3
         )
 
         if is_max:
@@ -380,13 +381,13 @@ class MHE():
         u=np.array([]),
         d=np.array([]),
     ):
-        x_aug = np.concatenate((x, p))#self._p_init))
+        x_aug = np.hstack((x, p))#self._p_init))
         self._solver.set(k, "x", x_aug)
 
         if k == self._N-1:
             d = np.zeros(self._nx)
         if k != self._N:
-            yref = np.concatenate((x_aug, d))
+            yref = np.hstack((x_aug, d))
             self._solver.set(k, "yref", yref)
             self._solver.set(k, "u", d)
             self._solver.set(k, "p", u)
@@ -394,12 +395,12 @@ class MHE():
         if k!= 0:
             if p_min.shape[0] == 0:
                 p_min = self._p_min
-            lbx_aug = np.concatenate((x, p_min))
+            lbx_aug = np.hstack((x, p_min))
             self._solver.set(k, "lbx", lbx_aug)
 
             if p_max.shape[0] == 0:
                 p_max = self._p_max
-            ubx_aug = np.concatenate((x, p_max))
+            ubx_aug = np.hstack((x, p_max))
             self._solver.set(k, "ubx", ubx_aug)
 
     def _update_horizon(
@@ -407,12 +408,12 @@ class MHE():
         x: np.ndarray,
         u: np.ndarray,
     ):
-        self._x = np.block([
-            [self._x[1:self._N, :]], [x]
-        ])
-        self._u = np.block([
-            [self._u[1:self._N-1, :]], [u]
-        ])
+        self._x = np.column_stack(
+            self._x[1:self._N, :], x
+        )
+        self._u = np.column_stack(
+            self._u[1:self._N-1, :], u
+        )
         for k in range(1, self._N):
             self._d[k-1,:] = np.array(
                 self._solver.get(k, "u")
@@ -475,17 +476,17 @@ class MHE():
 
         # augmented state constraints (will be overwritten)
         ocp.constraints.idxbx = np.arange(model.nx)
-        ocp.constraints.lbx = np.concatenate(
+        ocp.constraints.lbx = np.hstack(
             (-np.ones(self._nx), p_min)
         )
-        ocp.constraints.ubx = np.concatenate(
+        ocp.constraints.ubx = np.hstack(
             (np.ones(self._nx), p_max)
         )
         ocp.constraints.idxbx_e = np.arange(model.nx)
-        ocp.constraints.lbx_e = np.concatenate(
+        ocp.constraints.lbx_e = np.hstack(
             (-np.ones(self._nx), p_min)
         )
-        ocp.constraints.ubx_e = np.concatenate(
+        ocp.constraints.ubx_e = np.hstack(
             (np.ones(self._nx), p_max)
         )
 
