@@ -38,10 +38,10 @@ def run():
     # define a circular trajectory
     traj = Circle(v=2, r=1, alt=1)
 
-    
+
     x = np.zeros(nx)
     x[3] = 1
-    xset = np.zeros(nx*NODES)
+    xset = np.zeros(nx*(NODES+1))
     for k in range(steps):
         t = k*CTRL_T
         for n in range(NODES+1):
