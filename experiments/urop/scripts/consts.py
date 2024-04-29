@@ -3,6 +3,21 @@
 import numpy as np
 
 
+# relative file paths
+LEM_XREF_PATH = "../data/lem_xref.npy"
+LEM_UREF_PATH = "../data/lem_uref.npy"
+LEM_D_PATH = "../data/lem_d.npy"
+
+CIRC_XREF_PATH = "../data/circ_xref.npy"
+LEM_UREF_PATH = "../data/circ_uref.npy"
+LEM_D_PATH = "../data/circ_d.npy"
+
+SETPT_XREF_PATH = "../data/setpt_xref.npy"
+SETPT_UREF_PATH = "../data/setpt_uref.npy"
+SETPT_D_PATH = "../data/setpt_d.npy"
+
+
+
 # trajectory planner settings
 PREDICT_TIME = 30
 CTRL_T = 0.01
@@ -12,7 +27,7 @@ R_TRAJ = np.diag([0, 0, 0, 0])
 
 # mpc settings
 NODES = 40
-MAX_ITER_NMPC = 5
+MAX_ITER_NMPC = 10
 Q = np.diag([4,4,4, 2,2,2,2, 1,1,1, 1,1,1,])
 R = np.diag([0, 0, 0, 0])
 
@@ -39,7 +54,7 @@ U_GAIN = 1000
 P_TOL = np.array([
     0.2, 0.02,0.02,0.02, 2000,2000,2000, 0.02,0.02,0.02
 ])
-MAX_ITER_SM = 5
+MAX_ITER_SM = 2
 
 
 # L1 settings

@@ -7,22 +7,20 @@ from qrac.estimation import MHE, SetMembershipEstimator
 from qrac.sim import MinimalSim
 from consts import CTRL_T, SIM_T, Q, R, NODES, MAX_ITER_NMPC,\
                     D_MAX, D_MIN, P_TOL, MAX_ITER_SM,\
-                    Q_MHE_LIN, R_MHE, NODES_MHE, MAX_ITER_MHE
+                    Q_MHE_LIN, R_MHE, NODES_MHE, MAX_ITER_MHE,\
+                    LEM_XREF_PATH, LEM_UREF_PATH, LEM_D_PATH
 
 
 def main():
     # file access
-    xfilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/lem_xref.npy"
-    ufilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/lem_uref.npy"
-    dfilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/lem_d.npy"
-    trajname = "/home/derek/dev/my-repos/qrac/experiments/urop/data/lem_smmhe_traj.npy"
-    figname = "/home/derek/dev/my-repos/qrac/experiments/urop/figures/lem_smmhe.png"
+    trajname = "../data/lem_smmhe_traj.npy"
+    figname = "../figures/lem_smmhe.png"
 
 
     # load in time optimal trajectory
-    xref = np.load(xfilename)
-    uref = np.load(ufilename)
-    disturb = np.load(dfilename)
+    xref = np.load(LEM_XREF_PATH)
+    uref = np.load(LEM_UREF_PATH)
+    disturb = np.load(LEM_D_PATH)
 
 
     # inaccurate model

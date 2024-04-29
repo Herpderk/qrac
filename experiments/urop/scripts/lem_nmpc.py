@@ -4,22 +4,20 @@ import numpy as np
 from qrac.models import Crazyflie, Quadrotor
 from qrac.control import NMPC
 from qrac.sim import MinimalSim
-from consts import CTRL_T, SIM_T, NODES, MAX_ITER_NMPC, Q, R
+from consts import CTRL_T, SIM_T, NODES, MAX_ITER_NMPC, Q, R,\
+                    LEM_XREF_PATH, LEM_UREF_PATH, LEM_D_PATH
 
 
 def main():
     # file access
-    xfilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/lem_xref.npy"
-    ufilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/lem_uref.npy"
-    dfilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/lem_d.npy"
-    trajname = "/home/derek/dev/my-repos/qrac/experiments/urop/data/lem_nmpc_traj.npy"
-    figname = "/home/derek/dev/my-repos/qrac/experiments/urop/figures/lem_nmpc.png"
+    trajname = "../data/lem_nmpc_traj.npy"
+    figname = "../figures/lem_nmpc.png"
 
 
     # load in references and disturbance
-    xref = np.load(xfilename)
-    uref = np.load(ufilename)
-    disturb = np.load(dfilename)
+    xref = np.load(LEM_XREF_PATH)
+    uref = np.load(LEM_UREF_PATH)
+    disturb = np.load(LEM_D_PATH)
 
 
     # inaccurate model
