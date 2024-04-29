@@ -21,8 +21,7 @@ from scipy.interpolate import make_interp_spline
 import matplotlib.pyplot as plt
 import matplotlib
 from acados_template import AcadosOcpSolver, AcadosOcp, ocp_get_default_cmake_builder
-from qrac.models import Quadrotor, AffineQuadrotor,\
-                        ParameterizedQuadrotor
+from qrac.models import Quadrotor, AffineQuadrotor, ParameterizedQuadrotor, L1Quadrotor
 
 
 class NMPC:
@@ -68,7 +67,7 @@ class NMPC:
 
     @property
     def n_set(self) -> int:
-        return self._N * self._nx
+        return (self._N+1) * self._nx
 
     def get_input(
         self,
@@ -149,15 +148,14 @@ class NMPC:
         self._solver.set(0, "lbx", x)
         self._solver.set(0, "ubx", x)
 
-        # the reference input will be the hover input
         for k in range(self._N):
-            yref = np.concatenate(
-                (xset[k*self._nx : k*self._nx + self._nx],
-                 uset[k*self._nu : k*self._nu + self._nu])
-            )
+            yref = np.concatenate((
+                xset[k*self._nx : k*self._nx + self._nx],
+                uset[k*self._nu : k*self._nu + self._nu]
+            ))
             self._solver.set(k, "yref", yref)
-            self._solver.set(k, "p", p)
-
+        self._solver.set(0, "p", p)
+        self._solver.set(self._N, "y_ref", xset[self._N*self._nx:])
         self._solver.solve()
         #self._solver.print_statistics()
 
@@ -203,15 +201,19 @@ class NMPC:
 
         # W is a block diag matrix of Q and R costs from standard QP
         ocp.cost.W = block_diag(Q,R)
-
         # use V coeffs to map x & u to y
         ocp.cost.Vx = np.zeros((ny, model.nx))
         ocp.cost.Vx[: model.nx, : model.nx] = np.eye(model.nx)
         ocp.cost.Vu = np.zeros((ny, model.nu))
         ocp.cost.Vu[-model.nu :, -model.nu :] = np.eye(model.nu)
+        
+        # terminal cost
+        ocp.cost.W_e = Q
+        ocp.cost.Vx_e = np.eye(model.nx)
 
         # Initialize reference trajectory (will be overwritten)
         ocp.cost.yref = np.zeros(ny)
+        ocp.cost.yref_e = np.zeros(model.nx)
 
         # init parameter vector
         ocp.parameter_values = np.zeros(model.np)
@@ -256,7 +258,7 @@ class NMPC:
 
         if rti:
             ocp.solver_options.nlp_solver_type = "SQP_RTI"
-            solver = AcadosOcpSolver(ocp, json_file=name, cmake_builder=builder)
+            solver = AcadosOcpSolver(ocp, json_file=name, cmake_builder=builder)#, build=False, generate=False)
             solver.options_set("rti_phase", 0)
         else:
             ocp.solver_options.nlp_solver_type = "SQP"
@@ -672,3 +674,180 @@ class L1Augmentation():
         if type(bandwidth) != int and type(bandwidth) != float:
             raise TypeError(
                 "Please input the bandwidth as an integer or float!")
+
+
+class L1Optimizer():
+    def __init__(
+        self,
+        model: Quadrotor,
+        u_min: np.ndarray,
+        u_max: np.ndarray,
+        a_gain_min: float,
+        a_gain_max: float,
+        bandwidth_min: float,
+        bandwidth_max:float,
+        Ts: float,
+        M: int,
+        rti: bool,
+        Am=-np.eye(6),
+        nlp_tol=10**-6,
+        nlp_max_iter=20,
+        qp_max_iter=20
+    ):
+        model_aug = L1Quadrotor(model)
+        model_aug.get_l1_opt_dynamics(
+            M=M, Ts=Ts, Am=Am
+        )
+        self._solver = self._init_solver(
+            model=model_aug, u_min=u_min, u_max=u_max,
+            a_gain_min=a_gain_min, a_gain_max=a_gain_max,
+            bandwidth_min=bandwidth_min, bandwidth_max=bandwidth_max,
+            time_step=Ts, rti=rti, nlp_tol=nlp_tol,
+            nlp_max_iter=nlp_max_iter, qp_max_iter=qp_max_iter
+        )
+
+        self._M = M
+        self._nx = model.nx
+        self._nu = model.nu
+        self._nz = model_aug.nz
+        self._np = model_aug.nz + 2*model.nu
+        self._nparam = model_aug.nu
+
+        self._idx = 0
+        self._l1param = np.zeros(model_aug.nu)
+        self._z = np.zeros((M, model_aug.nz))
+        self._zpred = np.zeros((M, model_aug.nz))
+        self._unom = np.zeros((M, model.nu))
+        self._ul1prev = np.zeros((M, model.nu))
+
+    def get_l1_parameters(self) -> np.ndarray:
+        return self._l1param
+
+    def update(
+        self,
+        zpred: np.ndarray,
+        z: np.ndarray,
+        unom: np.ndarray,
+        ul1prev: np.ndarray,
+        timer=False
+    ) -> None:
+        if self._idx == self._M:
+            self._solve(timer=timer)
+            self._idx = 0
+        self._zpred[self._idx] = zpred
+        self._z[self._idx] = z
+        self._unom[self._idx] = unom
+        self._ul1prev[self._idx] = ul1prev
+        self._idx += 1
+
+    def _solve(
+        self,      
+        timer: bool
+    ):
+        if timer:
+            st = time.perf_counter()
+
+        yref = np.concatenate((self._z.flatten(), self._l1param))
+        p = np.zeros(self._M*self._np)
+        for k in range(self._M):
+            p[k*self._np : (k+1)*self._np] = np.concatenate(
+                (self._z[k], self._unom[k], self._ul1prev[k])
+            )
+            
+        self._solver.set(0, "yref_e", yref)
+        self._solver.set(0, "p", p)
+        self._solver.set(0, "x", self._zpred)
+        self._solver.set(0, "u", self._l1param)
+        self._solver.solve()
+        self._l1param = self._solver.get(0,"u")
+        if timer:
+            et = time.perf_counter()
+            print(f"l1 optimizer runtime: {et - st}")
+
+    def _init_solver(
+        self,
+        model: Quadrotor,
+        u_min: np.ndarray,
+        u_max: np.ndarray,
+        a_gain_min: float,
+        a_gain_max: float,
+        bandwidth_min: float,
+        bandwidth_max: float,
+        time_step: float,
+        rti: bool,
+        nlp_tol: float,
+        nlp_max_iter: int,
+        qp_max_iter: int
+    ) -> AcadosOcpSolver:
+        ny = model.nx + model.nu  # combine x and u into y
+
+        ocp = AcadosOcp()
+        ocp.model = model.get_acados_model()
+        ocp.dims.N = 2
+        ocp.dims.nx = model.nx
+        ocp.dims.nu = model.nu
+        ocp.dims.ny = ny
+        ocp.dims.nbx = model.nx
+        ocp.dims.nbx_0 = ocp.dims.nbx
+        ocp.dims.nbx_e = ocp.dims.nbx
+        ocp.dims.nbu = model.nu
+
+        # total horizon in seconds
+        ocp.solver_options.tf = time_step * ocp.dims.N
+
+        # formulate the default least-squares cost as a quadratic cost
+        ocp.cost.cost_type_e = "LINEAR_LS"
+
+        # W is a block diag matrix of Q and R costs from standard QP
+        ocp.cost.W_e = np.eye(model.nx)
+        ocp.cost.Vx_e = np.eye(model.nx)
+
+        # init reference trajectory (will be overwritten)
+        ocp.cost.yref_e = np.zeros(model.nx)
+
+        # init parameter vector
+        ocp.parameter_values = np.zeros(model.np)
+
+        # Initial state (will be overwritten)
+        ocp.constraints.x0 = np.zeros(model.nx)
+
+        # control input constraints (disturbance)
+        ocp.constraints.idxbu = np.arange(model.nu)
+        ocp.constraints.lbu = np.array([a_gain_min, bandwidth_min])
+        ocp.constraints.ubu = np.array([a_gain_max, bandwidth_max])
+
+        # augmented state constraints (will be overwritten)
+        '''
+        ocp.constraints.idxbx_e = np.arange(model.nx)
+        ocp.constraints.lbx_e = np.concatenate(
+            (-np.ones(self._nx), p_min)
+        )
+        ocp.constraints.ubx_e = np.concatenate(
+            (np.ones(self._nx), p_max)
+        )'''
+
+        # partial condensing HPIPM is fastest:
+        # https://cdn.syscop.de/publications/Frison2020a.pdf
+        ocp.solver_options.hpipm_mode = "SPEED_ABS"
+        ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
+        ocp.solver_options.qp_solver_warm_start = 1
+        ocp.solver_options.qp_solver_iter_max = qp_max_iter
+        ocp.solver_options.nlp_solver_max_iter = nlp_max_iter
+        ocp.solver_options.nlp_solver_tol_stat = nlp_tol
+        ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
+        ocp.solver_options.integrator_type = "ERK"
+        ocp.solver_options.print_level = 0
+        ocp.solver_options.nlp_solver_ext_qp_res = 1
+
+        ocp.code_export_directory = "mhe_c_code"
+        name = "acados_mhe.json"
+        builder = ocp_get_default_cmake_builder()
+
+        if rti:
+            ocp.solver_options.nlp_solver_type = "SQP_RTI"
+            solver = AcadosOcpSolver(ocp, json_file=name, cmake_builder=builder)#, build=False, generate=False)
+            solver.options_set("rti_phase", 0)
+        else:
+            ocp.solver_options.nlp_solver_type = "SQP"
+            solver = AcadosOcpSolver(ocp, json_file=name, cmake_builder=builder)
+        return solver

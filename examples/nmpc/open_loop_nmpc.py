@@ -26,7 +26,8 @@ def main():
     x0[3] = 1
     # the setpoint must span the entire prediction horizon
     x_set = np.tile(
-        np.array([2,-2, 4, 1,0,0,0, 0,0,0, 0,0,0]), num_nodes)
+        np.array([2,-2, 4, 1,0,0,0, 0,0,0, 0,0,0]), num_nodes+1
+    )
     mpc.get_trajectory(x0, x_set, timer=True, visuals=True)
 
 

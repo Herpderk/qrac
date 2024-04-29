@@ -44,7 +44,7 @@ def run():
     xset = np.zeros(nx*NODES)
     for k in range(steps):
         t = k*CTRL_T
-        for n in range(NODES):
+        for n in range(NODES+1):
             xset[n*nx : n*nx + nx] = traj.get_setpoint(t)
             t += CTRL_T
         u = mpc.get_input(x=x, xset=xset, timer=True)
