@@ -3,7 +3,9 @@
 from typing import Tuple
 import casadi as cs
 import numpy as np
+from scipy.linalg import expm
 from acados_template import AcadosModel
+
 
 class Quadrotor():
     def __init__(
@@ -305,6 +307,101 @@ class DisturbedQuadrotor(Quadrotor):
         ))
         self.x = x_aug
         self.xdot = xdot_aug
+
+
+class L1Quadrotor(Quadrotor):
+    def __init__(
+        self,
+        model: Quadrotor
+    ) -> None:
+        assert type(model) == Quadrotor
+        super().__init__(
+            model.m, model.Ixx, model.Iyy, model.Izz,
+            model.Ax, model.Ay, model.Az, model.kf, model.km,
+            model.xB, model.yB, model.u_min, model.u_max,
+            "L1_Quadrotor"
+        )
+        self.nz = 6
+        self.n_um = 2
+
+    def get_l1_opt_dynamics(
+        self,
+        M: int,
+        Ts: float,
+        Am: np.ndarray,
+    ) -> AcadosModel:
+        a_gain = cs.SX.sym("a_gain")
+        w = cs.SX.sym("w")
+        u = cs.SX(cs.vertcat(
+            a_gain, w
+        ))
+        x = cs.vertcat()
+        xdot = cs.vertcat()
+        p = cs.vertcat()
+        
+        for k in range(M):
+            zpred = cs.SX.sym(f"zpred_{k}", self.nz)
+            ztrue = cs.SX.sym(f"ztrue_{k}", self.nz)
+            ul1prev = cs.SX.sym(f"ul1prev_{k}", self.nu)
+            unom = cs.SX.sym(f"unom_{k}", self.nu)
+            
+            f, g_m, g_um = self.get_l1_dynamics(z=ztrue, u=unom)
+            G = cs.horzcat(g_m, g_um)
+            phi = np.linalg.inv(Am) @ (expm(Am*Ts) - np.eye(self.nz))
+            mu = expm(Am*Ts) * (zpred - ztrue)
+            
+            d = -a_gain @ np.eye(self.nz) @ cs.inv(G) @ cs.inv(phi) @ mu
+            d_m = d[:self.nu]
+            d_um = d[self.nu : self.nu + self.n_um]
+
+            ul1 = ul1prev*np.exp(-w*Ts) - d_m*(1-np.exp(-w*Ts))
+            #utot = unom + ul1
+
+            zpred_dot = Am@(zpred - ztrue) + f + g_m@(ul1+d_m) + g_um@d_um
+            #utot_dot = cs.SX.zeros(3)
+            
+            x = cs.SX(cs.vertcat(
+                x, zpred, #utot
+            ))
+            xdot = cs.SX(cs.vertcat(
+                xdot, zpred_dot, #utot_dot
+            ))
+            p = cs.SX(cs.vertcat(
+                p, ztrue, unom, ul1prev
+            ))
+
+        self.x = x
+        self.xdot = xdot
+        self.u = u
+        self.p = p
+        self.np = p.shape[0]
+        self.nx, self.nu = self.get_dims()
+
+
+    def get_l1_dynamics(
+        self,
+        z: cs.SX,
+        u: cs.SX,
+    ) -> Tuple[cs.SX, cs.SX, cs.SX]:
+        assert len(z) == self.nz
+        assert len(u) == self.nu
+        b1 = self.R[:,0]
+        b2 = self.R[:,1]
+        b3 = self.R[:,2]
+
+        f = cs.SX(cs.vertcat(
+            self.R@cs.vertcat(0,0,cs.sum1(u)) - self.A@z[0:3])/self.m + self.g,
+            cs.inv(self.J) @ (self.B@u - cs.cross(z[3:6], self.J@z[3:6])
+        ))
+        g_m = cs.SX(cs.vertcat(
+            b3/self.m @ cs.SX.ones(1,self.nu),
+            cs.inv(self.J) @ self.B
+        ))
+        g_um = cs.SX(cs.vertcat(
+            cs.horzcat(b1, b2)/self.m,
+            cs.SX.zeros(self.nz-3,self.n_um)
+        ))
+        return f, g_m, g_um
 
 
 def Crazyflie(
