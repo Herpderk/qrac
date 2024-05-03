@@ -73,7 +73,6 @@ class CrazyflieFeedback():
             print(f"\nvel: {self._milli_vels[0:3]}")
             print(f"ang vel: {self._milli_vels[3:6]}\n")
 
-
     def _run_logger(self, logger, uri: str):
         print("Starting Crazyflie Logger...")
         with SyncCrazyflie(uri, cf=Crazyflie()) as scf:
@@ -84,9 +83,7 @@ class CrazyflieFeedback():
             logger.stop()
 
     def _init_logger(self, period_ms: int):
-        logger = LogConfig(
-            name="Vel_Estimator", period_in_ms=period_ms
-        )
+        logger = LogConfig(name="Vel_Estimator", period_in_ms=period_ms)
         logger.add_variable("stateEstimateZ.vx", "int16_t")
         logger.add_variable("stateEstimateZ.vy", "int16_t")
         logger.add_variable("stateEstimateZ.vz", "int16_t")

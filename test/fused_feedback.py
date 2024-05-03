@@ -1,6 +1,6 @@
 import time
 import numpy as np
-from qrac.feedback import CrazyflieFeedback, OptiTrackFeedback
+from qrac.interfaces import CrazyflieFeedback, OptiTrackFeedback
 
 def main():
     runtime = 5
