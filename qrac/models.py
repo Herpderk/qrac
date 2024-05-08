@@ -309,10 +309,11 @@ class DisturbedQuadrotor(Quadrotor):
         self.xdot = xdot_aug
 
 
+# move args (M, Ts, Am) to a manually called function get_discrete_model
 class L1Quadrotor(Quadrotor):
     def __init__(
         self,
-        model: Quadrotor
+        model: Quadrotor,
     ) -> None:
         assert type(model) == Quadrotor
         super().__init__(
@@ -322,76 +323,130 @@ class L1Quadrotor(Quadrotor):
             "L1_Quadrotor"
         )
         self.nz = 6
+        self.ny = self.nz + self.nu
         self.n_um = 2
 
-    def get_l1_opt_dynamics(
+    def get_predictor_funcs(self) -> Tuple[cs.Function, cs.Function, cs.Function]:
+        upred = cs.SX.sym("upred", 4)
+        f, g_m, g_um = self._get_predictor_vars(x=self.x, u=upred)
+        f_func = cs.Function("f", [self.x, upred], [f])
+        g_m_func = cs.Function("g_m", [self.x], [g_m])
+        g_um_func = cs.Function("g_um", [self.x], [g_um])
+        return f_func, g_m_func, g_um_func
+
+    def get_discrete_model(
         self,
         M: int,
         Ts: float,
         Am: np.ndarray,
     ) -> AcadosModel:
+        self._get_l1_opt_dynamics(M=M, Ts=Ts, Am=Am)
+        model_ac = AcadosModel()
+        model_ac.disc_dyn_expr = self.disc_dyn_expr
+        model_ac.x = self.x
+        model_ac.u = self.u
+        model_ac.p = self.p
+        model_ac.name = self.name
+        return model_ac
+
+    def _get_l1_opt_dynamics(
+        self,
+        M: int,
+        Ts: float,
+        Am: np.ndarray,
+    ) -> None:
         a_gain = cs.SX.sym("a_gain")
         w = cs.SX.sym("w")
+        #u = w
         u = cs.SX(cs.vertcat(
             a_gain, w
         ))
         x = cs.vertcat()
-        xdot = cs.vertcat()
+        x_nxt = cs.vertcat()
         p = cs.vertcat()
-        
+
         for k in range(M):
-            zpred = cs.SX.sym(f"zpred_{k}", self.nz)
-            ztrue = cs.SX.sym(f"ztrue_{k}", self.nz)
-            ul1prev = cs.SX.sym(f"ul1prev_{k}", self.nu)
-            unom = cs.SX.sym(f"unom_{k}", self.nu)
-            
-            f, g_m, g_um = self.get_l1_dynamics(z=ztrue, u=unom)
-            G = cs.horzcat(g_m, g_um)
-            phi = np.linalg.inv(Am) @ (expm(Am*Ts) - np.eye(self.nz))
-            mu = expm(Am*Ts) * (zpred - ztrue)
-            
-            d = -a_gain @ np.eye(self.nz) @ cs.inv(G) @ cs.inv(phi) @ mu
-            d_m = d[:self.nu]
-            d_um = d[self.nu : self.nu + self.n_um]
-
-            ul1 = ul1prev*np.exp(-w*Ts) - d_m*(1-np.exp(-w*Ts))
-            #utot = unom + ul1
-
-            zpred_dot = Am@(zpred - ztrue) + f + g_m@(ul1+d_m) + g_um@d_um
-            #utot_dot = cs.SX.zeros(3)
-            
-            x = cs.SX(cs.vertcat(
-                x, zpred, #utot
-            ))
-            xdot = cs.SX(cs.vertcat(
-                xdot, zpred_dot, #utot_dot
-            ))
-            p = cs.SX(cs.vertcat(
-                p, ztrue, unom, ul1prev
-            ))
+            x_k, x_nxt_k, p_k = self._get_l1_dynamics(
+                k=k, Ts=Ts, Am=Am, a_gain=a_gain, w=w
+            )
+            x = cs.SX(cs.vertcat(x, x_k))
+            x_nxt = cs.SX(cs.vertcat(x_nxt, x_nxt_k))
+            p = cs.SX(cs.vertcat(p, p_k))
+        #p = cs.vertcat(p, a_gain)
 
         self.x = x
-        self.xdot = xdot
+        self.disc_dyn_expr = x_nxt
         self.u = u
         self.p = p
         self.np = p.shape[0]
         self.nx, self.nu = self.get_dims()
 
-
-    def get_l1_dynamics(
+    def _get_l1_dynamics(
         self,
-        z: cs.SX,
+        k: int,
+        Ts: float,
+        Am: cs.SX,
+        a_gain: cs.SX,
+        w: cs.SX,
+    ) -> Tuple[cs.SX, cs.SX, cs.SX]:
+        zpred = cs.SX.sym(f"zpred_{k}", self.nz)
+        ul1prev = cs.SX.sym(f"ul1prev_{k}", self.nu)
+        ul1curr = cs.SX.sym(f"ul1curr_{k}", self.nu)
+        utot = cs.SX.sym(f"utot_{k}", self.nu)
+        xtrue = cs.SX.sym(f"x_{k}", self.nx)
+        ztrue = xtrue[self.nx-self.nz : self.nx]
+        unom = utot - ul1curr
+
+        f, g_m, g_um = self._get_predictor_vars(x=xtrue, u=unom)
+        G = cs.horzcat(g_m, g_um)
+        phi = cs.inv(Am) @ cs.SX(expm(Am*Ts) - cs.SX.eye(self.nz))
+        mu = cs.SX(expm(Am*Ts)) * (zpred - ztrue)
+
+        d = -a_gain @ cs.SX.eye(self.nz) @ cs.inv(G) @ cs.inv(phi) @ mu
+        d_m = d[:self.nu]
+        d_um = d[self.nu : self.nu + self.n_um]
+
+        ul1_nxt = ul1prev*cs.exp(-w*Ts) - d_m*(1-cs.exp(-w*Ts))
+        utot_nxt = unom + ul1_nxt
+
+        # integration of predictor dynamics
+        #zpred_dot = Am@(zpred - ztrue) + f + g_m@(ul1_nxt+d_m) + g_um@d_um
+        #zpred_nxt = zpred + Ts*zpred_dot
+        e = Am@(zpred - ztrue) + g_m@(ul1_nxt+d_m) + g_um@d_um
+        '''
+        ode = cs.Function("ode", [zpred, ul1_nxt], [zpred_dot])
+        k1 = ode(zpred,           ul1_nxt)
+        k2 = ode(zpred + Ts/2*k1, ul1_nxt)
+        k3 = ode(zpred + Ts/2*k2, ul1_nxt)
+        k4 = ode(zpred + Ts*k3,   ul1_nxt)
+        zpred_nxt = zpred + Ts/6 * (k1 + 2*k2 + 2*k3 + k4)
+        '''
+
+        x = cs.SX(cs.vertcat(zpred, utot,))
+        #x_nxt = cs.SX(cs.vertcat(zpred_nxt, utot_nxt,))
+        x_nxt = cs.SX(cs.vertcat(e, utot_nxt,))
+        p = cs.SX(cs.vertcat(xtrue, ul1prev, ul1curr,))
+        return x, x_nxt, p
+
+    def _get_predictor_vars(
+        self,
+        x: cs.SX,
         u: cs.SX,
     ) -> Tuple[cs.SX, cs.SX, cs.SX]:
-        assert len(z) == self.nz
-        assert len(u) == self.nu
-        b1 = self.R[:,0]
-        b2 = self.R[:,1]
-        b3 = self.R[:,2]
+        assert u.shape[0] == self.nu
+        z = x[self.nx-self.nz : self.nx]
+        R = cs.SX(cs.vertcat(
+            cs.horzcat( 1-2*(x[5]**2+x[6]**2), 2*(x[4]*x[5]-x[3]*x[6]), 2*(x[4]*x[6]+x[3]*x[5]) ),
+            cs.horzcat( 2*(x[4]*x[5]+x[3]*x[6]), 1-2*(x[4]**2+x[6]**2), 2*(x[5]*x[6]-x[3]*x[4]) ),
+            cs.horzcat( 2*(x[4]*x[6]-x[3]*x[5]), 2*(x[5]*x[6]+x[3]*x[4]), 1-2*(x[4]**2+x[5]**2) ),
+        ))
+        b1 = R[:,0]
+        b2 = R[:,1]
+        b3 = R[:,2]
 
         f = cs.SX(cs.vertcat(
-            self.R@cs.vertcat(0,0,cs.sum1(u)) - self.A@z[0:3])/self.m + self.g,
-            cs.inv(self.J) @ (self.B@u - cs.cross(z[3:6], self.J@z[3:6])
+            R@(cs.vertcat(0,0,cs.sum1(u)) - self.A@z[0:3])/self.m + self.g,
+            cs.inv(self.J) @ (self.B@u - cs.cross(z[3:6], self.J@z[3:6]))
         ))
         g_m = cs.SX(cs.vertcat(
             b3/self.m @ cs.SX.ones(1,self.nu),
