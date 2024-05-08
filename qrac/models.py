@@ -323,7 +323,7 @@ class L1Quadrotor(Quadrotor):
             "L1_Quadrotor"
         )
         self.nz = 6
-        self.ny = self.nz + self.nu
+        self.ny = 2*self.nz + self.nu
         self.n_um = 2
 
     def get_predictor_funcs(self) -> Tuple[cs.Function, cs.Function, cs.Function]:
@@ -390,6 +390,7 @@ class L1Quadrotor(Quadrotor):
         w: cs.SX,
     ) -> Tuple[cs.SX, cs.SX, cs.SX]:
         zpred = cs.SX.sym(f"zpred_{k}", self.nz)
+        zpred_copy = cs.SX.sym(f"zpred_copy_{k}", self.nz)
         ul1prev = cs.SX.sym(f"ul1prev_{k}", self.nu)
         ul1curr = cs.SX.sym(f"ul1curr_{k}", self.nu)
         utot = cs.SX.sym(f"utot_{k}", self.nu)
@@ -410,9 +411,9 @@ class L1Quadrotor(Quadrotor):
         utot_nxt = unom + ul1_nxt
 
         # integration of predictor dynamics
-        #zpred_dot = Am@(zpred - ztrue) + f + g_m@(ul1_nxt+d_m) + g_um@d_um
-        #zpred_nxt = zpred + Ts*zpred_dot
-        e = Am@(zpred - ztrue) + g_m@(ul1_nxt+d_m) + g_um@d_um
+        e = Am@(zpred_copy - ztrue) + g_m@(ul1_nxt+d_m)# + g_um@d_um
+        zpred_nxt = zpred + Ts*(f + e + g_um@d_um)
+        
         '''
         ode = cs.Function("ode", [zpred, ul1_nxt], [zpred_dot])
         k1 = ode(zpred,           ul1_nxt)
@@ -422,9 +423,9 @@ class L1Quadrotor(Quadrotor):
         zpred_nxt = zpred + Ts/6 * (k1 + 2*k2 + 2*k3 + k4)
         '''
 
-        x = cs.SX(cs.vertcat(zpred, utot,))
+        x = cs.SX(cs.vertcat(zpred, zpred_copy, utot,))
         #x_nxt = cs.SX(cs.vertcat(zpred_nxt, utot_nxt,))
-        x_nxt = cs.SX(cs.vertcat(e, utot_nxt,))
+        x_nxt = cs.SX(cs.vertcat(zpred_nxt, e, utot_nxt,))
         p = cs.SX(cs.vertcat(xtrue, ul1prev, ul1curr,))
         return x, x_nxt, p
 

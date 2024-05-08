@@ -760,10 +760,10 @@ class L1Optimizer():
         self._l1pl = np.array([a_gain_min, bandwidth_min])
         self._l1pu = np.array([a_gain_max, bandwidth_max])
         #self._x = np.zeros((1, model.nx))
-        self._x = np.zeros((self._M, model.nx))
-        self._zpred = np.zeros((self._M, model_aug.nz))
-        self._u = np.zeros((self._M, model.nu))
-        self._ul1 = np.zeros((self._M+1, model.nu))
+        self._x = np.zeros((1, model.nx))
+        self._zpred = np.zeros((1, model_aug.nz))
+        self._u = np.zeros((1, model.nu))
+        self._ul1 = np.zeros((1, model.nu))
 
     def get_l1_parameters(
         self,
@@ -778,13 +778,10 @@ class L1Optimizer():
             zpred=zpred, x=x,
             u=u, ul1=ul1
         )
-        '''
         if self._ul1.shape[0] < self._M+1:
             pass
-            print(self._x)
-            print(self._ul1)
-        else:'''
-        self._solve()
+        else:
+            self._solve()
         return self._l1p
 
     def _update_horizon(
@@ -794,15 +791,12 @@ class L1Optimizer():
         u: np.ndarray,
         ul1: np.ndarray,
     ) -> None:
-        i0 = 1
-        i1 = 1
-        '''
+        i0 = 0
+        i1 = 0
         if self._u.shape[0] >= self._M:
             i0 = 1
         if self._ul1.shape[0] >= self._M+1:
             i1 = 1
-        '''
-            
         self._zpred = np.vstack(
             (self._zpred[i0:self._M, :], zpred)
         )
@@ -827,9 +821,11 @@ class L1Optimizer():
                 (self._x[k], self._ul1[k:k+2].flatten())
             )
             x[k*self._ny : (k+1)*self._ny] = np.hstack(
-                (self._zpred[k], self._u[k])
+                (self._zpred[k], self._zpred[k], self._u[k])
             )
-            y_ref[k*self._ny : (k+1)*self._ny] = np.zeros(self._nz + self._nu)
+            y_ref[k*self._ny : (k+1)*self._ny] = np.hstack(
+                (self._zpred[k], np.zeros(self._nz+self._nu))
+            )
             '''
             np.hstack(
                 (self._x[k, self._nx-self._nz:self._nx], np.zeros(self._nu))
@@ -886,9 +882,9 @@ class L1Optimizer():
         ocp.cost.cost_type_e = "LINEAR_LS"
 
         # construct Q for full state
-        R = 10**-10*np.diag(np.ones(model.nu))
-        Q = 10**10*np.diag(np.hstack(
-            (np.ones(self._nz), np.zeros(self._nu))
+        R = 0.01*np.diag(np.ones(model.nu))
+        Q = np.diag(np.hstack(
+            (0.01*np.ones(self._nz), 1*np.ones(self._nz), np.zeros(self._nu))
         ))
         Q_full = Q
         for k in range(1, self._M):
@@ -927,6 +923,7 @@ class L1Optimizer():
         '''
 
         # control input constraints
+        '''
         ocp.constraints.idxbx_e = np.zeros(self._nu * self._M)
         ocp.constraints.lbx_e = np.zeros(self._nu * self._M)
         ocp.constraints.ubx_e = np.zeros(self._nu * self._M)
@@ -939,6 +936,7 @@ class L1Optimizer():
                 u_min * np.ones(nu)
             ocp.constraints.ubx_e[k*nu : (k+1)*nu] = \
                 u_max * np.ones(nu)
+        '''
 
         # partial condensing HPIPM is fastest:
         # https://cdn.syscop.de/publications/Frison2020a.pdf
@@ -948,7 +946,7 @@ class L1Optimizer():
         ocp.solver_options.qp_solver_iter_max = qp_max_iter
         ocp.solver_options.nlp_solver_max_iter = nlp_max_iter
         ocp.solver_options.nlp_solver_tol_stat = nlp_tol
-        ocp.solver_options.hessian_approx = "EXACT" # "GAUSS_NEWTON"
+        ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
         ocp.solver_options.integrator_type = "DISCRETE"
         ocp.solver_options.print_level = 0
         ocp.solver_options.nlp_solver_ext_qp_res = 1
