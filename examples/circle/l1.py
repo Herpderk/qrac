@@ -15,8 +15,8 @@ def main():
     R = np.diag([0, 0, 0, 0])
 
     # L1 settings
-    A_GAIN = 400
-    W = 20
+    A_GAIN = 60
+    W = 60
 
     # sim settings
     SIM_T = CTRL_T / 10
@@ -25,8 +25,8 @@ def main():
     ])
 
     # file access
-    xfilename = "../refs/lemniscate/xref.npy"
-    ufilename = "../refs/lemniscate/uref.npy"
+    xfilename = "../refs/circle/xref.npy"
+    ufilename = "../refs/circle/uref.npy"
 
     # load in time optimal trajectory
     xref = np.load(xfilename)
@@ -38,9 +38,9 @@ def main():
 
     # true model
     m_true = 1.5 * inacc.m
-    Ixx_true = 2 * inacc.Ixx
-    Iyy_true = 2 * inacc.Iyy
-    Izz_true = 2 * inacc.Izz
+    Ixx_true = 5 * inacc.Ixx
+    Iyy_true = 5 * inacc.Iyy
+    Izz_true = 5 * inacc.Izz
     Ax_true = 0
     Ay_true = 0
     Az_true = 0

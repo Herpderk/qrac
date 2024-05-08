@@ -11,11 +11,11 @@ from consts import CTRL_T, SIM_T, NODES, MAX_ITER_NMPC, Q, R,\
 
 def main():
     # file access
-    xfilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/setpt_xref.npy"
-    ufilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/setpt_uref.npy"
-    dfilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/setpt_d.npy"
-    trajname = "/home/derek/dev/my-repos/qrac/experiments/urop/data/setpt_l1_traj.npy"
-    figname = "/home/derek/dev/my-repos/qrac/experiments/urop/figures/setpt_l1.png"
+    xfilename = "../data/setpt_xref.npy"
+    ufilename = "../data/setpt_uref.npy"
+    dfilename = "../data/setpt_d.npy"
+    trajname = "../data/setpt_l1_opt_traj.npy"
+    figname = "../figures/setpt_l1_opt.png"
 
 
     # load in references and disturbance
@@ -27,10 +27,10 @@ def main():
     acc = Crazyflie(Ax=0.01, Ay=0.01, Az=0.02)
 
     # inaccurate model
-    m_inacc = 2 * acc.m
-    Ixx_inacc = 10 * acc.Ixx
-    Iyy_inacc = 10 * acc.Iyy
-    Izz_inacc = 10 * acc.Izz
+    m_inacc = 1.5 * acc.m
+    Ixx_inacc = 5 * acc.Ixx
+    Iyy_inacc = 5 * acc.Iyy
+    Izz_inacc = 5 * acc.Izz
     Ax_inacc = 0
     Ay_inacc = 0
     Az_inacc = 0

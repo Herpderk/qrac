@@ -11,17 +11,17 @@ def main():
     PREDICT_TIME = 30
     CTRL_T = 0.01
     NODES = int(round(PREDICT_TIME / CTRL_T))
-    Q = np.diag([4,4,4, 1,1,1, 0,0,0, 0,0,0,])
+    Q = np.diag([20,20,20, 1,1,1,1, 0,0,0, 0,0,0,])
     R = np.diag([0, 0, 0, 0])
 
 
     # traj settings
     A = 1
-    B = 2
+    B = 1.5
     AXES = [0,1]
     TRANSLATE = [0,0,1]
-    xfilename = "/home/derek/dev/my-repos/qrac/examples/refs/lemniscate/xref.npy"
-    ufilename = "/home/derek/dev/my-repos/qrac/examples/refs/lemniscate/uref.npy"
+    xfilename = "../refs/lemniscate/xref.npy"
+    ufilename = "../refs/lemniscate/uref.npy"
 
 
     # init model
@@ -46,6 +46,7 @@ def main():
     # run for predefined number of steps
     nx = model.nx
     x = np.zeros(nx)
+    x[3] = 1
     xset = np.zeros(nx*NODES)
 
     for k in range(NODES):
@@ -55,7 +56,7 @@ def main():
 
     # output results
     vavg = np.average(
-        np.linalg.norm(xref[:, 6:9], axis=1)
+        np.linalg.norm(xref[:, 7:10], axis=1)
     )
     print(f"Avg velocity: {vavg}")
     np.save(xfilename, xref)
