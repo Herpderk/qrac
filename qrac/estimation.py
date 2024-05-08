@@ -408,11 +408,11 @@ class MHE():
         x: np.ndarray,
         u: np.ndarray,
     ):
-        self._x = np.column_stack(
-            self._x[1:self._N, :], x
+        self._x = np.vstack(
+            (self._x[1:self._N, :], x)
         )
-        self._u = np.column_stack(
-            self._u[1:self._N-1, :], u
+        self._u = np.vstack(
+            (self._u[1:self._N-1, :], u)
         )
         for k in range(1, self._N):
             self._d[k-1,:] = np.array(
