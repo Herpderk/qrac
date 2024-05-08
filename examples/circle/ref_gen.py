@@ -8,19 +8,19 @@ from qrac.control import NMPC
 
 def main():
     # nmpc settings
-    PREDICT_TIME = 20
+    PREDICT_TIME = 15
     CTRL_T = 0.01
     NODES = int(round(PREDICT_TIME / CTRL_T))
-    Q = np.diag([4,4,4, 1,1,1, 0,0,0, 0,0,0,])
+    Q = np.diag([4,4,4, 1,1,1,1, 0,0,0, 0,0,0,])
     R = np.diag([0, 0, 0, 0])
 
 
     # traj settings
-    VEL = 4
-    RAD = 5
-    ALT = 5
-    xfilename = "/home/derek/dev/my-repos/qrac/examples/refs/circle/xref.npy"
-    ufilename = "/home/derek/dev/my-repos/qrac/examples/refs/circle/uref.npy"
+    VEL = 1
+    RAD = 1
+    ALT = 1
+    xfilename = "../refs/circle/xref.npy"
+    ufilename = "../refs/circle/uref.npy"
 
 
     # init model
@@ -44,6 +44,7 @@ def main():
     # run for predefined number of steps
     nx = model.nx
     x = np.zeros(nx)
+    x[3] = 1
     xset = np.zeros(nx*NODES)
 
     for k in range(NODES):
@@ -53,7 +54,7 @@ def main():
 
     # output results
     vavg = np.average(
-        np.linalg.norm(xref[:, 6:9], axis=1)
+        np.linalg.norm(xref[:, 7:10], axis=1)
     )
     print(f"Avg velocity: {vavg}")
     np.save(xfilename, xref)
