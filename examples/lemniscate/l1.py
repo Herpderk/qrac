@@ -12,11 +12,11 @@ def main():
     CTRL_T = 0.01
     NODES = 40
     Q = np.diag([4,4,4, 2,2,2,2, 1,1,1, 1,1,1,])
-    R = np.diag([0, 0, 0, 0])
+    R = 10**(-10) * np.ones(4)
 
     # L1 settings
-    A_GAIN = 400
-    W = 20
+    A_GAIN = 200
+    W = 80
 
     # sim settings
     SIM_T = CTRL_T / 10
@@ -38,9 +38,9 @@ def main():
 
     # true model
     m_true = 1.5 * inacc.m
-    Ixx_true = 2 * inacc.Ixx
-    Iyy_true = 2 * inacc.Iyy
-    Izz_true = 2 * inacc.Izz
+    Ixx_true = 3 * inacc.Ixx
+    Iyy_true = 3 * inacc.Iyy
+    Izz_true = 3 * inacc.Izz
     Ax_true = 0
     Ay_true = 0
     Az_true = 0
@@ -62,7 +62,7 @@ def main():
         model=inacc, Q=Q, R=R,
         u_min=inacc.u_min, u_max=inacc.u_max,
         time_step=CTRL_T, num_nodes=NODES,
-        rti=True, nlp_max_iter=1, qp_max_iter=10
+        rti=True, nlp_max_iter=1, qp_max_iter=5
     )
 
 
@@ -87,6 +87,7 @@ def main():
     x = xref[0]
     nu = inacc.nu
     uset = np.zeros(nu*NODES)
+    sat_count = 0
 
     for k in range(steps):
         diff = steps - k
@@ -101,6 +102,10 @@ def main():
             uset[:nu*NODES] = uref[k:k+NODES, :].flatten()
 
         u = l1_mpc.get_input(x=x, xset=xset, uset=uset, timer=True)
+        for inp in u:
+            if inp > 0.15:
+                sat_count += 1
+                break
         #d = D_MAX*np.random.uniform(-1, 1, nx)
         d = np.zeros(13)
         x = sim.update(x=x, u=u, d=d, timer=True)
@@ -113,12 +118,10 @@ def main():
     # calculate RMSE
     res = 0
     xdata = sim.get_xdata()
-    for k in range(steps-1):
-        res += np.linalg.norm(
-            xref[k, 0:3] - xdata[k+1, 0:3], ord=2
-        )
-    rmse = np.sqrt(res/steps)
+    err = xref[k, 0:3] - xdata[k, 0:3]
+    rmse = np.sqrt(np.sum(np.square(err))/err.shape[0])
     print(f"root mean square error: {rmse}")
+    print(f"number of time steps with actuation saturation: {sat_count}")
 
 
     # plot

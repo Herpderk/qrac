@@ -17,7 +17,7 @@ def main():
 
     # traj settings
     A = 1
-    B = 1.5
+    B = 1.2
     AXES = [0,1]
     TRANSLATE = [0,0,1]
     xfilename = "../refs/lemniscate/xref.npy"

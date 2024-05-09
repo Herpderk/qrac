@@ -14,8 +14,8 @@ def main():
     xfilename = "../data/setpt_xref.npy"
     ufilename = "../data/setpt_uref.npy"
     dfilename = "../data/setpt_d.npy"
-    trajname = "../data/setpt_l1_opt_traj.npy"
-    figname = "../figures/setpt_l1_opt.png"
+    trajname = "../data/setpt_l1_traj.npy"
+    figname = "../figures/setpt_l1.png"
 
 
     # load in references and disturbance

@@ -58,20 +58,16 @@ def main():
 
     # L1 optimizer settings
     M = 10
-    A_GAIN_MIN = 0
-    A_GAIN_MAX = 400
     W_MIN = 0
-    W_MAX = 400
+    W_MAX = 1000
     # init L1
     l1_mpc = L1Augmentation(
         model=inacc, control_ref=mpc,
         adapt_gain=A_GAIN, bandwidth=W,
         opt_horizon=M,
-        adapt_gain_min=A_GAIN_MIN,
-        adapt_gain_max=A_GAIN_MAX,
         bandwidth_min=W_MIN, bandwidth_max=W_MAX,
         u_min=inacc.u_min, u_max=inacc.u_max,
-        rti=True, nlp_tol=10**(-6), nlp_max_iter=1, qp_max_iter=3
+        rti=True, nlp_tol=10**(-6), nlp_max_iter=1, qp_max_iter=5
     )
 
 

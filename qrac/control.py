@@ -250,7 +250,10 @@ class NMPC:
 
         ocp.code_export_directory = "mpc_c_code"
         name = "acados_mpc.json"
-        builder = ocp_get_default_cmake_builder()
+        if os.name == "nt":
+            builder = ocp_get_default_cmake_builder()
+        else:
+            builder = None
 
         if rti:
             ocp.solver_options.nlp_solver_type = "SQP_RTI"
@@ -500,8 +503,6 @@ class L1Augmentation():
         adapt_gain: float,
         bandwidth: float,
         opt_horizon=0,
-        adapt_gain_min=None,
-        adapt_gain_max=None,
         bandwidth_min=None,
         bandwidth_max=None,
         u_min=None,
@@ -519,7 +520,8 @@ class L1Augmentation():
         self._num = model_aug.n_um
         self._nx = model.nx
 
-        self._l1p = np.array([adapt_gain, bandwidth])
+        self._a_gain = adapt_gain
+        self._wb = np.array([bandwidth])
         self._Am = -1*np.eye(6)
         self._adapt_exp, self._adapt_mat = \
             self._get_l1_const(control_ref.dt)
@@ -538,17 +540,14 @@ class L1Augmentation():
         self._ctrl_ref = control_ref
         self._dt = control_ref.dt
         if not (
-            opt_horizon > 0
-            and adapt_gain_min != None and adapt_gain_max != None
-            and bandwidth_min != None and bandwidth_max != None and rti != None
-            and nlp_tol != None and nlp_max_iter != None and qp_max_iter != None
+            opt_horizon > 0 and bandwidth_min != None and bandwidth_max != None
+            and rti != None and nlp_tol != None and nlp_max_iter != None and qp_max_iter != None
         ):
             self._l1_opt = None
         else:
             self._l1_opt = L1Optimizer(
                 model=model, u_min=u_min, u_max=u_max,
                 a_gain=adapt_gain, bandwidth=bandwidth,
-                a_gain_min=adapt_gain_min, a_gain_max=adapt_gain_max,
                 bandwidth_min=bandwidth_min, bandwidth_max=bandwidth_max,
                 Ts=self._dt, M=opt_horizon, Am=self._Am, rti=rti,
                 nlp_tol=nlp_tol, nlp_max_iter=nlp_max_iter, qp_max_iter=qp_max_iter
@@ -574,7 +573,6 @@ class L1Augmentation():
         uref = self._ctrl_ref.get_input(x=x, xset=xset, uset=uset, timer=timer)
         ul1 = self._get_l1_input(x=x, uref=uref, timer=timer)
         self._u = uref + ul1
-        print(f"ul1: {ul1}")
         return self._u
 
     def _get_l1_input(
@@ -590,7 +588,8 @@ class L1Augmentation():
         self._predictor(
             x=x, uref=uref, ul1=ul1,
             d_m=d_m, d_um=d_um
-        )   
+        )
+        print(f"ul1: {ul1}")
         if timer:
             print(f"L1 runtime: {time.perf_counter() - st}")
         return ul1
@@ -600,11 +599,11 @@ class L1Augmentation():
         x: np.ndarray,
     ) -> None:
         if self._l1_opt != None:
-            self._l1p = self._l1_opt.get_l1_parameters(
-                l1p=self._l1p, zpred=self._z, x=x,
+            self._wb = self._l1_opt.get_l1_parameters(
+                wb=self._wb, zpred=self._z, x=x,
                 u=self._u, ul1=self._ul1,
             )
-            print(f"\noptimized L1 parameters: {self._l1p}\n")
+            print(f"\nBandwidth: {self._wb[0]}")
 
     def _adaptation(
         self,
@@ -619,7 +618,7 @@ class L1Augmentation():
         I = np.eye(self._nz)
         G = np.hstack((g_m, g_um))
         mu = self._adapt_exp @ z_err
-        adapt = self._l1p[0] * -I @ np.linalg.inv(G) @ self._adapt_mat @ mu
+        adapt = self._a_gain * -I @ np.linalg.inv(G) @ self._adapt_mat @ mu
         d_m = adapt[: self._nm]
         d_um = adapt[self._nm :]
         return d_m, d_um
@@ -628,8 +627,8 @@ class L1Augmentation():
         self,
         d_m: np.ndarray
     ) -> None:
-        self._ul1 = np.exp(-self._l1p[1]*self._dt) * self._ul1 \
-            - (1-np.exp(-self._l1p[1]*self._dt))*d_m
+        self._ul1 = np.exp(-self._wb[0]*self._dt) * self._ul1 \
+            - (1-np.exp(-self._wb[0]*self._dt))*d_m
         return self._ul1
 
     def _predictor(
@@ -724,8 +723,6 @@ class L1Optimizer():
         u_max: np.ndarray,
         a_gain: float,
         bandwidth: float,
-        a_gain_min: float,
-        a_gain_max: float,
         bandwidth_min: float,
         bandwidth_max:float,
         Am: np.ndarray,
@@ -746,7 +743,6 @@ class L1Optimizer():
         self._ny = model_aug.ny
         self._solver = self._init_solver(
             model=model_aug, u_min=u_min, u_max=u_max,
-            a_gain_min=a_gain_min, a_gain_max=a_gain_max,
             bandwidth_min=bandwidth_min, bandwidth_max=bandwidth_max,
             time_step=Ts, M=M, Am=Am, rti=rti, nlp_tol=nlp_tol,
             nlp_max_iter=nlp_max_iter, qp_max_iter=qp_max_iter
@@ -755,11 +751,11 @@ class L1Optimizer():
 
         # make sure model_aug.get_discrete_model() is called
         # before setting model_aug dimensions
-        self._l1p_init = np.array([a_gain, bandwidth])
-        self._l1p = self._l1p_init
-        self._l1pl = np.array([a_gain_min, bandwidth_min])
-        self._l1pu = np.array([a_gain_max, bandwidth_max])
-        #self._x = np.zeros((1, model.nx))
+        self._a_gain = a_gain
+        self._wb = np.array([bandwidth])
+        self._wbl = np.array([bandwidth_min])
+        self._wbu = np.array([bandwidth_max])
+
         self._x = np.zeros((1, model.nx))
         self._zpred = np.zeros((1, model_aug.nz))
         self._u = np.zeros((1, model.nu))
@@ -767,13 +763,13 @@ class L1Optimizer():
 
     def get_l1_parameters(
         self,
-        l1p: np.ndarray,
+        wb: float,
         zpred: np.ndarray,
         x: np.ndarray,
         u: np.ndarray,
         ul1: np.ndarray,
-    ) -> np.ndarray:
-        self._l1p = l1p
+    ) -> float:
+        self._wb = wb
         self._update_horizon(
             zpred=zpred, x=x,
             u=u, ul1=ul1
@@ -782,7 +778,7 @@ class L1Optimizer():
             pass
         else:
             self._solve()
-        return self._l1p
+        return self._wb
 
     def _update_horizon(
         self,
@@ -811,44 +807,37 @@ class L1Optimizer():
         )
 
     def _solve(self) -> None:
-        p = np.zeros(self._M*self._np)
+        p = np.zeros(self._M*self._np + 1)
         x = np.zeros(self._M*self._ny)
         y_ref = np.zeros(self._M*self._ny + self._nl1p)
 
-        y_ref[-self._nl1p :] = self._l1p
+        y_ref[-self._nl1p :] = self._wb
+        p[-1 :] = self._a_gain
         for k in range(self._M):
             p[k*self._np : (k+1)*self._np] = np.hstack(
                 (self._x[k], self._ul1[k:k+2].flatten())
             )
             x[k*self._ny : (k+1)*self._ny] = np.hstack(
-                (self._zpred[k], self._zpred[k], self._u[k])
+                (self._zpred[k], self._u[k])
             )
-            y_ref[k*self._ny : (k+1)*self._ny] = np.hstack(
-                (self._zpred[k], np.zeros(self._nz+self._nu))
-            )
-            '''
-            np.hstack(
-                (self._x[k, self._nx-self._nz:self._nx], np.zeros(self._nu))
-            )'''
-
-        self._solver.set(0, "u", self._l1p)
-        self._solver.set(0, "lbu", self._l1pl)
-        self._solver.set(0, "ubu", self._l1pu)
+            y_ref[k*self._ny : (k+1)*self._ny] = np.zeros(self._nz+self._nu)
+    
+        self._solver.set(0, "u", self._wb)
+        self._solver.set(0, "lbu", self._wbl)
+        self._solver.set(0, "ubu", self._wbu)
         self._solver.set(0, "p", p)
         self._solver.set(0, "lbx", x)
         self._solver.set(0, "ubx", x)
         self._solver.set(1, "y_ref", y_ref)
         self._solver.solve()
         #self._solver.print_statistics()
-        self._l1p = self._solver.get(0,"u")
+        self._wb = self._solver.get(0,"u")
 
     def _init_solver(
         self,
         model: L1Quadrotor,
         u_min: np.ndarray,
         u_max: np.ndarray,
-        a_gain_min: float,
-        a_gain_max: float,
         bandwidth_min: float,
         bandwidth_max: float,
         time_step: float,
@@ -882,9 +871,9 @@ class L1Optimizer():
         ocp.cost.cost_type_e = "LINEAR_LS"
 
         # construct Q for full state
-        R = 0.01*np.diag(np.ones(model.nu))
+        R = 0*np.diag(np.ones(model.nu))
         Q = np.diag(np.hstack(
-            (0.01*np.ones(self._nz), 1*np.ones(self._nz), np.zeros(self._nu))
+            (1000*np.ones(self._nz), np.zeros(self._nu))
         ))
         Q_full = Q
         for k in range(1, self._M):
@@ -915,15 +904,10 @@ class L1Optimizer():
         # l1 parameter constraints
         ocp.constraints.idxbu = np.arange(model.nu)
         
-        ocp.constraints.lbu = np.array([a_gain_min, bandwidth_min])
-        ocp.constraints.ubu = np.array([a_gain_max, bandwidth_max])
-        '''
         ocp.constraints.lbu = np.array([bandwidth_min])
         ocp.constraints.ubu = np.array([bandwidth_max])
-        '''
 
         # control input constraints
-        '''
         ocp.constraints.idxbx_e = np.zeros(self._nu * self._M)
         ocp.constraints.lbx_e = np.zeros(self._nu * self._M)
         ocp.constraints.ubx_e = np.zeros(self._nu * self._M)
@@ -931,16 +915,16 @@ class L1Optimizer():
         nu = self._nu
         for k in range(self._M):
             ocp.constraints.idxbx_e[k*nu : (k+1)*nu] = \
-                (k+1)*nz + np.arange(nu)
+                k*(nz + nu) + nz + np.arange(nu)
             ocp.constraints.lbx_e[k*nu : (k+1)*nu] = \
                 u_min * np.ones(nu)
             ocp.constraints.ubx_e[k*nu : (k+1)*nu] = \
                 u_max * np.ones(nu)
-        '''
+
 
         # partial condensing HPIPM is fastest:
         # https://cdn.syscop.de/publications/Frison2020a.pdf
-        ocp.solver_options.hpipm_mode = "ROBUST"
+        ocp.solver_options.hpipm_mode = "SPEED_ABS"
         ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
         ocp.solver_options.qp_solver_warm_start = 1
         ocp.solver_options.qp_solver_iter_max = qp_max_iter
@@ -953,7 +937,10 @@ class L1Optimizer():
 
         ocp.code_export_directory = "l1opt_c_code"
         name = "acados_l1opt.json"
-        builder = ocp_get_default_cmake_builder()
+        if os.name == "nt":
+            builder = ocp_get_default_cmake_builder()
+        else:
+            builder = None
 
         if rti:
             ocp.solver_options.nlp_solver_type = "SQP_RTI"
