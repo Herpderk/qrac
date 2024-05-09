@@ -505,7 +505,10 @@ class MHE():
 
         ocp.code_export_directory = "mhe_c_code"
         name = "acados_mhe.json"
-        builder = ocp_get_default_cmake_builder()
+        if os.name == "nt":
+            builder = ocp_get_default_cmake_builder()
+        else:
+            builder = None
 
         if rti:
             ocp.solver_options.nlp_solver_type = "SQP_RTI"
