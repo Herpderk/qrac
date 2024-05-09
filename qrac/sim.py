@@ -205,7 +205,10 @@ class MinimalSim():
         sim.solver_options.num_stages = 4
         sim.solver_options.num_steps = int(round(control_step / sim_step))
 
-        builder = ocp_get_default_cmake_builder()
+        if os.name == "nt":
+            builder = ocp_get_default_cmake_builder()
+        else:
+            builder = None
         solver = AcadosSimSolver(sim, cmake_builder=builder)
         return solver
 
