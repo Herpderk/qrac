@@ -519,15 +519,15 @@ class PendulumQuadrotor(Quadrotor):
         )
         yp_ddot = yp_ddot_partial + 1/(zp**2 * (xp**2-lp**2)) * (zp**4*y_ddot)
 
-        '''
-        acc_due_to_pend = cs.SX((mp/(self.m+mp)) * cs.vertcat(
-            -xp_ddot,
-            -yp_ddot,
-            (xp*xp_ddot + xp_dot**2 + yp*yp_ddot + yp_dot*2)/zp + (xp*xp_dot + yp*yp_dot)/zp**3 + self.g[2]*zp/lp,
-        ))
+
+        acc_due_to_pend = -cs.SX((mp/(self.m+mp)) * cs.vertcat(
+            xp_ddot,
+            yp_ddot,
+            xp*xp_ddot + xp_dot**2 + yp*yp_ddot + yp_dot**2)/zp + (xp*xp_dot + yp*yp_dot)**2/zp**3 - self.g[2]*zp/lp,
+        )
         self.xdot[-6:-3] = self.xdot[-6:-3]*self.m/(self.m+mp) + acc_due_to_pend
         self.xdot = cs.SX(cs.vertcat(self.xdot, xp_dot, yp_dot, xp_ddot, yp_ddot))
-        '''
+
         '''
         f = self.m * self.xdot[-6:-3]
         self.xdot[-6:-3] = cs.
