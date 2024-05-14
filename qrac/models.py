@@ -63,6 +63,17 @@ class Quadrotor():
         model_ac.name = self.name
         return model_ac
 
+    def get_implicit_model(self) -> AcadosModel:
+        model_ac = AcadosModel()
+        model_ac.f_expl_expr = self.f_expl_expr
+        model_ac.f_impl_expr = self.f_impl_expr
+        model_ac.x = self.x
+        model_ac.xdot = self.xdot
+        model_ac.u = self.u
+        model_ac.p = self.p
+        model_ac.name = self.name
+        return model_ac
+
     def get_dims(self) -> Tuple[float]:
         nx = self.x.shape[0]
         nu = self.u.shape[0]
@@ -207,6 +218,7 @@ class ParameterizedQuadrotor(Quadrotor):
             (self.R@self.T - A@v)/m + self.g,
             cs.inv(J) @ (self.B@self.u - cs.cross(wB, J@wB))
         ))
+        self.nx, self.nu = self.get_dims()
 
 
 class AffineQuadrotor(Quadrotor):
@@ -282,31 +294,7 @@ class AffineQuadrotor(Quadrotor):
         
         self.p = cs.SX.sym("p", self.np)
         self.xdot = self.F + self.G @ self.p
-
-
-class DisturbedQuadrotor(Quadrotor):
-    def __init__(
-            self,
-            model: Quadrotor
-        ) -> None:
-            assert type(model) == Quadrotor
-            super().__init__(
-                model.m, model.Ixx, model.Iyy, model.Izz,
-                model.Ax, model.Ay, model.Az, model.kf, model.km,
-                model.xB, model.yB, model.u_min, model.u_max,
-                "Disturbed_Quadrotor"
-            )
-            self._get_disturbed_dynamics()
-
-    def _get_disturbed_dynamics(self) -> None:
-        d = cs.SX.sym("disturbance", self.nx)
-        x_aug = cs.SX(cs.vertcat(self.x, d))
-        xdot_aug = cs.SX(cs.vertcat(
-            self.xdot[:self.nx] + d,
-            cs.SX.zeros(self.nx)
-        ))
-        self.x = x_aug
-        self.xdot = xdot_aug
+        self.nx, self.nu = self.get_dims()
 
 
 # move args (M, Ts, Am) to a manually called function get_discrete_model
@@ -449,6 +437,147 @@ class L1Quadrotor(Quadrotor):
             cs.SX.zeros(self.nz-3,self.n_um)
         ))
         return f, g_m, g_um
+
+
+class DisturbedQuadrotor(Quadrotor):
+    def __init__(
+            self,
+            model: Quadrotor
+        ) -> None:
+            assert type(model) == Quadrotor
+            super().__init__(
+                model.m, model.Ixx, model.Iyy, model.Izz,
+                model.Ax, model.Ay, model.Az, model.kf, model.km,
+                model.xB, model.yB, model.u_min, model.u_max,
+                "Disturbed_Quadrotor"
+            )
+            self._get_disturbed_dynamics()
+
+    def _get_disturbed_dynamics(self) -> None:
+        d = cs.SX.sym("disturbance", self.nx)
+        x_aug = cs.SX(cs.vertcat(self.x, d))
+        xdot_aug = cs.SX(cs.vertcat(
+            self.xdot[:self.nx] + d,
+            cs.SX.zeros(self.nx)
+        ))
+
+        xdot = cs.SX.sym("xdot", xdot_aug.shape[0])
+        f_expl = xdot_aug
+        f_impl = xdot - f_expl
+
+        self.x = x_aug
+        #self.xdot = xdot
+        self.xdot = xdot_aug
+        #self.f_expl_expr = f_expl
+        #self.f_impl_expr = f_impl
+        self.nx, self.nu = self.get_dims()
+
+
+class PendulumQuadrotor(Quadrotor):
+    def __init__(
+        self,
+        model: Quadrotor,
+        m_pend: float,
+        l_pend: float,
+    ) -> None:
+        assert type(model) == Quadrotor
+        super().__init__(
+            model.m, model.Ixx, model.Iyy, model.Izz,
+            model.Ax, model.Ay, model.Az, model.kf, model.km,
+            model.xB, model.yB, model.u_min, model.u_max,
+            "Pendulum_Quadrotor"
+        )
+        self.mp = m_pend
+        self.lp = l_pend
+        self._get_pend_dynamics(mp=m_pend, lp=l_pend)
+
+    def _get_pend_dynamics(
+        self,
+        mp: float,
+        lp: float,
+    ) -> None:
+        xp = cs.SX.sym("xp")
+        yp = cs.SX.sym("yp")
+        xp_dot = cs.SX.sym("xp_dot")
+        yp_dot = cs.SX.sym("yp_dot")
+
+        zp = cs.sqrt(lp**2 - xp**2 - yp**2)
+        x_ddot = self.xdot[-6]
+        y_ddot = self.xdot[-5]
+        z_ddot = self.xdot[-4]
+
+        F = 1/(zp**2 * (xp**2-lp**2)) * (
+            zp**4*y_ddot - yp*zp**3*z_ddot + yp*yp_dot**2*(lp**2-xp**2) + yp*xp_dot**2*(lp**2-yp**2) + 2*xp*yp**2*xp_dot*yp_dot + self.g[2]*yp*zp**3
+        )
+        xp_ddot_partial = (xp**2-lp**2) / (zp**2*( (xp**2-lp**2)*(yp**2-lp**2)-(xp*yp)**2 )) * (
+            -xp*zp**3*z_ddot + xp*yp*zp**2*F + xp*xp_dot**2*(lp**2-yp**2) + xp*yp_dot**2*(lp**2-xp**2) + 2*yp*xp**2*xp_dot*yp_dot + self.g[2]*xp*zp**3
+        )
+        xp_ddot = xp_ddot_partial + (xp**2-lp**2) / (zp**2*( (xp**2-lp**2)*(yp**2-lp**2)-(xp*yp)**2 )) * (zp**4*x_ddot)
+        
+        yp_ddot_partial = 1/(zp**2 * (xp**2-lp**2)) * (
+            - yp*zp**3*z_ddot + xp*yp*zp**2*xp_ddot + yp*yp_dot**2*(lp**2-xp**2) + yp*xp_dot**2*(lp**2-yp**2) + 2*xp*yp**2*xp_dot*yp_dot + self.g[2]*yp*zp**3
+        )
+        yp_ddot = yp_ddot_partial + 1/(zp**2 * (xp**2-lp**2)) * (zp**4*y_ddot)
+
+        '''
+        acc_due_to_pend = cs.SX((mp/(self.m+mp)) * cs.vertcat(
+            -xp_ddot,
+            -yp_ddot,
+            (xp*xp_ddot + xp_dot**2 + yp*yp_ddot + yp_dot*2)/zp + (xp*xp_dot + yp*yp_dot)/zp**3 + self.g[2]*zp/lp,
+        ))
+        self.xdot[-6:-3] = self.xdot[-6:-3]*self.m/(self.m+mp) + acc_due_to_pend
+        self.xdot = cs.SX(cs.vertcat(self.xdot, xp_dot, yp_dot, xp_ddot, yp_ddot))
+        '''
+        '''
+        f = self.m * self.xdot[-6:-3]
+        self.xdot[-6:-3] = cs.
+        '''
+
+        self.nx, self.nu = self.get_dims()
+        
+        xdot = cs.SX.sym("xdot", self.xdot.shape[0])
+        f_expl = self.xdot
+        f_impl = xdot - f_expl
+
+        self.x = cs.SX(cs.vertcat(self.x, xp, yp, xp_dot, yp_dot))
+        self.xdot = xdot
+        self.f_expl_expr = f_expl
+        self.f_impl_expr = f_impl
+        self.nx, self.nu = self.get_dims()
+
+
+class PendDisturbedQuadrotor(PendulumQuadrotor):
+    def __init__(
+            self,
+            model: PendulumQuadrotor
+        ) -> None:
+            assert type(model) == PendulumQuadrotor
+            super().__init__(
+                model=Quadrotor(
+                    model.m, model.Ixx, model.Iyy, model.Izz,
+                    model.Ax, model.Ay, model.Az, model.kf, model.km,
+                    model.xB, model.yB, model.u_min, model.u_max,
+                    "Pendulum_Disturbed_Quadrotor"
+                ),
+                m_pend=model.mp, l_pend=model.lp
+            )
+            self._get_disturbed_dynamics()
+
+    def _get_disturbed_dynamics(self) -> None:
+        d = cs.SX.sym("disturbance", self.nx)
+        x_aug = cs.SX(cs.vertcat(self.x, d))
+
+        f_expl_aug = cs.SX(cs.vertcat(
+            self.f_expl_expr[:self.nx] + d,
+            cs.SX.zeros(self.nx)
+        ))
+        xdot_aug = cs.SX.sym("xdot_aug", f_expl_aug.shape[0])
+        f_impl_aug = xdot_aug - f_expl_aug
+
+        self.x = x_aug
+        self.xdot = xdot_aug
+        self.f_expl_expr = f_expl_aug
+        self.f_impl_expr = f_impl_aug
 
 
 def Crazyflie(
