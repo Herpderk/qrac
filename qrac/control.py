@@ -516,8 +516,6 @@ class L1Augmentation():
         self._a_gain = np.array([adapt_gain])
         self._wb = np.array([bandwidth])
         self._Am = -np.diag(np.array([1,1,1,1,1,1]))
-        self._adapt_exp, self._adapt_mat = \
-            self._get_l1_const(control_ref.dt)
         self._f, self._g_m, self._g_um = \
             L1Quadrotor(model).get_predictor_funcs()
         
@@ -525,6 +523,8 @@ class L1Augmentation():
         self._ul1 = np.zeros(model.nu)
         self._u = np.zeros(model.nu)
         self._z = np.zeros(self._nz)
+        self._z_err = np.zeros(self._nz)
+        self._d_um = np.zeros(self._nz - self._nm)
 
         self._ctrl_ref = control_ref
         self._dt = control_ref.dt
@@ -610,6 +610,7 @@ class L1Augmentation():
             (expm(self._Am*self._dt) - np.eye(self._nz)) @ mu
         d_m = adapt[: self._nm]
         d_um = adapt[self._nm :]
+        self._d_um = d_um
         return d_m, d_um
 
     def _control_law(
@@ -631,6 +632,7 @@ class L1Augmentation():
         z_err = np.array(
             self._z - x[self._z_idx : self._z_idx+self._nz]
         )
+        self._z_err = z_err
         f = np.array(self._f(x, uref)).flatten()
         g_m = np.array(self._g_m(x))
         g_um = np.array(self._g_um(x))
@@ -638,37 +640,6 @@ class L1Augmentation():
             self._Am @ z_err \
             + f + g_m@(ul1 + d_m) + g_um@d_um
         )
-
-    def _get_l1_const(
-        self,
-        time_step: float
-    ) -> Tuple[np.ndarray]:
-        adapt_exp = expm(self._Am*time_step)
-        adapt_mat = np.linalg.inv(self._Am) @ (adapt_exp - np.eye(self._nz))
-        return adapt_exp, adapt_mat
-
-    def _get_dynamics_funcs(
-        self,
-        model: Quadrotor,
-    ) -> Tuple[cs.Function]:
-        # rotation matrix from body frame to inertial frame
-        b1 = model.R[:,0]
-        b2 = model.R[:,1]
-        b3 = model.R[:,2]
-
-        f = model.xdot[6:12]
-        g_m = cs.SX(cs.vertcat(
-            b3/model.m @ cs.SX.ones(1,4),
-            cs.inv(model.J) @ model.B
-        ))
-        g_um = cs.SX(cs.vertcat(
-            cs.horzcat(b1, b2)/model.m,
-            cs.SX.zeros(3,2)
-        ))
-        f_func = cs.Function("f", [model.x, model.u], [f])
-        g_m_func = cs.Function("g_m", [model.x], [g_m])
-        g_um_func = cs.Function("g_um", [model.x], [g_um])
-        return f_func, g_m_func, g_um_func
 
     def _assert(
         self,
