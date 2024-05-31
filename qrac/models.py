@@ -3,7 +3,7 @@
 from typing import Tuple
 import casadi as cs
 import numpy as np
-from scipy.linalg import expm
+from scipy.linalg import expm, block_diag
 from acados_template import AcadosModel
 
 
@@ -159,7 +159,7 @@ class Quadrotor():
         name: str,
     ) -> None:
         for arg in [m, Ixx, Iyy, Izz, Ax, Ay, Az, kf, km]:
-            if (type(arg) != int and type(arg) != float):
+            if (type(arg) != int and type(arg) != float and type(arg) != np.float64):
                 raise TypeError(f"{arg} should be an int or float!")
         for arg in [xB, yB,]:
             if len(arg) != 4:
@@ -312,6 +312,7 @@ class L1Quadrotor(Quadrotor):
         )
         self.nz = 6
         self.ny = self.nz + self.nu
+        self.n_m = 4
         self.n_um = 2
 
     def get_predictor_funcs(self) -> Tuple[cs.Function, cs.Function, cs.Function]:
@@ -324,11 +325,10 @@ class L1Quadrotor(Quadrotor):
 
     def get_discrete_model(
         self,
-        M: int,
         Ts: float,
         Am: np.ndarray,
     ) -> AcadosModel:
-        self._get_l1_opt_dynamics(M=M, Ts=Ts, Am=Am)
+        self._get_l1_opt_dynamics(Ts=Ts, Am=Am)
         model_ac = AcadosModel()
         model_ac.disc_dyn_expr = self.disc_dyn_expr
         model_ac.x = self.x
@@ -337,76 +337,68 @@ class L1Quadrotor(Quadrotor):
         model_ac.name = self.name
         return model_ac
 
-    def _get_l1_opt_dynamics(
+    def get_casadi_solver(
         self,
-        M: int,
         Ts: float,
         Am: np.ndarray,
-    ) -> None:
+        Q: float,
+    ):
+        wb = cs.SX.sym("wb")
         a_gain = cs.SX.sym("a_gain")
-        w = cs.SX.sym("w")
-        u = w
-        #u = cs.SX(cs.vertcat(
-        #    a_gain, w
-        #))
-        x = cs.vertcat()
-        x_nxt = cs.vertcat()
-        p = cs.vertcat()
-
-        for k in range(M):
-            x_k, x_nxt_k, p_k = self._get_l1_dynamics(
-                k=k, Ts=Ts, Am=Am, a_gain=a_gain, w=w
-            )
-            x = cs.SX(cs.vertcat(x, x_k))
-            x_nxt = cs.SX(cs.vertcat(x_nxt, x_nxt_k))
-            p = cs.SX(cs.vertcat(p, p_k))
-        p = cs.vertcat(p, a_gain)
-
-        self.x = x
-        self.disc_dyn_expr = x_nxt
-        self.u = u
-        self.p = p
+        a_gain_prev = cs.SX.sym("a_gain_prev")
+        z_nxt = cs.SX.sym("z_nxt", self.nz)
+        p, zcost = self._get_l1_opt_dynamics(
+            Ts=Ts, a_gain=a_gain, wb=wb, Am=Am
+        )
+        
+        p = cs.vertcat(p, a_gain_prev, z_nxt,)
         self.np = p.shape[0]
-        self.nx, self.nu = self.get_dims()
 
-    def _get_l1_dynamics(
+        R = cs.horzcat( 
+            cs.vertcat(self.b3, cs.SX.zeros(1)),
+            cs.vertcat(cs.SX.zeros(1,3), cs.SX.eye(3)),
+        )
+        f = (cs.inv(R) @ (zcost - z_nxt)[-self.n_m:]).T @ \
+            (cs.inv(R) @ (zcost - z_nxt)[-self.n_m:]) \
+            + Q * (a_gain - a_gain_prev)**2
+
+        qp = {"x": a_gain, "p": p, "f": f}
+        opts = {"verbose": False}
+        sol = cs.nlpsol("sol", "ipopt", qp, opts)
+        return sol
+
+    def _get_l1_opt_dynamics(
         self,
-        k: int,
         Ts: float,
         Am: cs.SX,
         a_gain: cs.SX,
-        w: cs.SX,
+        wb: cs.SX,
     ) -> Tuple[cs.SX, cs.SX, cs.SX]:
-        zpred = cs.SX.sym(f"zpred_{k}", self.nz)
-        #zpred_copy = cs.SX.sym(f"zpred_copy_{k}", self.nz)
-        ul1prev = cs.SX.sym(f"ul1prev_{k}", self.nu)
-        ul1curr = cs.SX.sym(f"ul1curr_{k}", self.nu)
-        utot = cs.SX.sym(f"utot_{k}", self.nu)
-        xtrue = cs.SX.sym(f"x_{k}", self.nx)
-        ztrue = xtrue[self.nx-self.nz : self.nx]
+        zpred = cs.SX.sym("zpred_opt_l1", self.nz)
+        ul1prev = cs.SX.sym("ul1prev_opt_l1", self.nu)
+        ul1curr = cs.SX.sym("ul1curr_opt_l1", self.nu)
+        utot = cs.SX.sym("utot_opt_l1", self.nu)
+        xtrue = cs.SX.sym("x_opt_l1", self.nx)
+        ztrue = xtrue[-self.nz:]
         unom = utot - ul1curr
 
         f, g_m, g_um = self._get_predictor_vars(x=xtrue, u=unom)
         G = cs.horzcat(g_m, g_um)
-        phi = cs.inv(Am) @ cs.SX(expm(Am*Ts) - cs.SX.eye(self.nz))
-        mu = cs.SX(expm(Am*Ts)) * (zpred - ztrue)
+        phi = cs.inv(Am) @ cs.SX(expm(Am*Ts) - np.eye(self.nz))
+        mu = expm(Am*Ts) * (zpred - ztrue)
 
-        d = -a_gain @ cs.SX.eye(self.nz) @ cs.inv(G) @ cs.inv(phi) @ mu
-        d_m = d[:self.nu]
-        d_um = d[self.nu : self.nu + self.n_um]
+        d = -a_gain * cs.SX.eye(self.nz) @ cs.inv(G) @ cs.inv(phi) @ mu
+        d_m = d[:self.n_m]
+        d_um = d[-self.n_um:]
 
-        ul1_nxt = ul1prev*cs.exp(-w*Ts) - d_m*(1-cs.exp(-w*Ts))
-        utot_nxt = unom + ul1_nxt
+        ul1_nxt = ul1prev*cs.exp(-wb*Ts) - d_m*(1-cs.exp(-wb*Ts))
 
-        # integration of predictor dynamics
-        e = Am@(zpred - ztrue) + g_m@(ul1_nxt+d_m)# + g_um@d_um
-        #zpred_nxt = zpred + Ts*(f + e + g_um@d_um)
-
-        x = cs.SX(cs.vertcat(zpred, utot,))
-        #x_nxt = cs.SX(cs.vertcat(zpred_nxt, utot_nxt,))
-        x_nxt = cs.SX(cs.vertcat(e, utot_nxt,))
-        p = cs.SX(cs.vertcat(xtrue, ul1prev, ul1curr,))
-        return x, x_nxt, p
+        # predictor in cost
+        zcost = ztrue + Ts * (
+            f + g_m @ (ul1_nxt + d_m)
+        )
+        p = cs.SX(cs.vertcat(utot, ul1prev, ul1curr, xtrue, zpred, wb,))
+        return p, zcost
 
     def _get_predictor_vars(
         self,
@@ -420,20 +412,20 @@ class L1Quadrotor(Quadrotor):
             cs.horzcat( 2*(x[4]*x[5]+x[3]*x[6]), 1-2*(x[4]**2+x[6]**2), 2*(x[5]*x[6]-x[3]*x[4]) ),
             cs.horzcat( 2*(x[4]*x[6]-x[3]*x[5]), 2*(x[5]*x[6]+x[3]*x[4]), 1-2*(x[4]**2+x[5]**2) ),
         ))
-        b1 = R[:,0]
-        b2 = R[:,1]
-        b3 = R[:,2]
+        self.b1 = R[:,0]
+        self.b2 = R[:,1]
+        self.b3 = R[:,2]
 
         f = cs.SX(cs.vertcat(
             R@(cs.vertcat(0,0,cs.sum1(u)) - self.A@z[0:3])/self.m + self.g,
             cs.inv(self.J) @ (self.B@u - cs.cross(z[3:6], self.J@z[3:6]))
         ))
         g_m = cs.SX(cs.vertcat(
-            b3/self.m @ cs.SX.ones(1,self.nu),
+            self.b3/self.m @ cs.SX.ones(1,self.nu),
             cs.inv(self.J) @ self.B
         ))
         g_um = cs.SX(cs.vertcat(
-            cs.horzcat(b1, b2)/self.m,
+            cs.horzcat(self.b1, self.b2)/self.m,
             cs.SX.zeros(self.nz-3,self.n_um)
         ))
         return f, g_m, g_um
@@ -507,42 +499,27 @@ class PendulumQuadrotor(Quadrotor):
         z_ddot = self.xdot[-4]
 
         F = 1/(zp**2 * (xp**2-lp**2)) * (
-            zp**4*y_ddot - yp*zp**3*z_ddot + yp*yp_dot**2*(lp**2-xp**2) + yp*xp_dot**2*(lp**2-yp**2) + 2*xp*yp**2*xp_dot*yp_dot + self.g[2]*yp*zp**3
+            zp**4*y_ddot + yp*zp**3*z_ddot + yp*yp_dot**2*(lp**2-xp**2) + yp*xp_dot**2*(lp**2-yp**2) + 2*xp*yp**2*xp_dot*yp_dot - self.g[2]*yp*zp**3
         )
         xp_ddot_partial = (xp**2-lp**2) / (zp**2*( (xp**2-lp**2)*(yp**2-lp**2)-(xp*yp)**2 )) * (
-            -xp*zp**3*z_ddot + xp*yp*zp**2*F + xp*xp_dot**2*(lp**2-yp**2) + xp*yp_dot**2*(lp**2-xp**2) + 2*yp*xp**2*xp_dot*yp_dot + self.g[2]*xp*zp**3
+            xp*zp**3*z_ddot + xp*yp*zp**2*F + xp*xp_dot**2*(lp**2-yp**2) + xp*yp_dot**2*(lp**2-xp**2) + 2*yp*xp**2*xp_dot*yp_dot - self.g[2]*xp*zp**3
         )
         xp_ddot = xp_ddot_partial + (xp**2-lp**2) / (zp**2*( (xp**2-lp**2)*(yp**2-lp**2)-(xp*yp)**2 )) * (zp**4*x_ddot)
         
         yp_ddot_partial = 1/(zp**2 * (xp**2-lp**2)) * (
-            - yp*zp**3*z_ddot + xp*yp*zp**2*xp_ddot + yp*yp_dot**2*(lp**2-xp**2) + yp*xp_dot**2*(lp**2-yp**2) + 2*xp*yp**2*xp_dot*yp_dot + self.g[2]*yp*zp**3
+            yp*zp**3*z_ddot + xp*yp*zp**2*xp_ddot + yp*yp_dot**2*(lp**2-xp**2) + yp*xp_dot**2*(lp**2-yp**2) + 2*xp*yp**2*xp_dot*yp_dot - self.g[2]*yp*zp**3
         )
         yp_ddot = yp_ddot_partial + 1/(zp**2 * (xp**2-lp**2)) * (zp**4*y_ddot)
 
 
-        acc_due_to_pend = -cs.SX((mp/(self.m+mp)) * cs.vertcat(
-            xp_ddot,
-            yp_ddot,
-            xp*xp_ddot + xp_dot**2 + yp*yp_ddot + yp_dot**2)/zp + (xp*xp_dot + yp*yp_dot)**2/zp**3 - self.g[2]*zp/lp,
-        )
+        acc_due_to_pend = cs.SX((mp/(self.m+mp)) * cs.vertcat(
+            -xp_ddot,
+            -yp_ddot,
+            ((xp*xp_ddot + xp_dot**2 + yp*yp_ddot + yp_dot**2)/zp + (xp*xp_dot + yp*yp_dot)**2/zp**3) + self.g[2]*zp/lp,
+        ))
         self.xdot[-6:-3] = self.xdot[-6:-3]*self.m/(self.m+mp) + acc_due_to_pend
         self.xdot = cs.SX(cs.vertcat(self.xdot, xp_dot, yp_dot, xp_ddot, yp_ddot))
-
-        '''
-        f = self.m * self.xdot[-6:-3]
-        self.xdot[-6:-3] = cs.
-        '''
-
-        self.nx, self.nu = self.get_dims()
-        
-        xdot = cs.SX.sym("xdot", self.xdot.shape[0])
-        f_expl = self.xdot
-        f_impl = xdot - f_expl
-
         self.x = cs.SX(cs.vertcat(self.x, xp, yp, xp_dot, yp_dot))
-        self.xdot = xdot
-        self.f_expl_expr = f_expl
-        self.f_impl_expr = f_impl
         self.nx, self.nu = self.get_dims()
 
 

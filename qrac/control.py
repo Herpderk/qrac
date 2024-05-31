@@ -224,13 +224,13 @@ class NMPC:
 
         # state constraints: yaw
         ocp.constraints.idxbx = np.array(
-            [2, 3, 4, 5, 6]
+            [3, 4, 5, 6]
         )
         ocp.constraints.lbx = np.array(
-            [0, -1, -1, -1, -1,]
+            [-1, -1, -1, -1,]
         )
         ocp.constraints.ubx = np.array(
-            [10**10, 1, 1, 1, 1,]
+            [1, 1, 1, 1,]
         )
         ocp.constraints.idxbx_e = ocp.constraints.idxbx
         ocp.constraints.lbx_e = ocp.constraints.lbx
@@ -502,37 +502,26 @@ class L1Augmentation():
         control_ref,
         adapt_gain: float,
         bandwidth: float,
-        opt_horizon=0,
-        bandwidth_min=None,
-        bandwidth_max=None,
-        u_min=None,
-        u_max=None,
-        rti=None,
-        nlp_tol=None,
-        nlp_max_iter=None,
-        qp_max_iter=None,
+        adapt_gain_min=None,
+        adapt_gain_max=None,
+        Q=None,
     ) -> None:
         self._assert(model, control_ref, adapt_gain, bandwidth,)
         model_aug = L1Quadrotor(model)
         self._z_idx = model.nx - model_aug.nz
         self._nz = model_aug.nz
-        self._nm = model.nu
-        self._num = model_aug.n_um
+        self._nm = model_aug.n_m
         self._nx = model.nx
 
-        self._a_gain = adapt_gain
+        self._a_gain = np.array([adapt_gain])
         self._wb = np.array([bandwidth])
-        self._Am = -1*np.eye(6)
+        self._Am = -np.diag(np.array([1,1,1,1,1,1]))
         self._adapt_exp, self._adapt_mat = \
             self._get_l1_const(control_ref.dt)
         self._f, self._g_m, self._g_um = \
             L1Quadrotor(model).get_predictor_funcs()
-        #self._f, self._g_m, self._g_um = self._get_dynamics_funcs(model)
         
         self._x = np.zeros(model.nx)
-        self._xset = np.zeros(control_ref.n_set)
-        self._d_m = np.zeros(self._nm)
-        self._d_um = np.zeros(self._num)
         self._ul1 = np.zeros(model.nu)
         self._u = np.zeros(model.nu)
         self._z = np.zeros(self._nz)
@@ -540,17 +529,16 @@ class L1Augmentation():
         self._ctrl_ref = control_ref
         self._dt = control_ref.dt
         if not (
-            opt_horizon > 0 and bandwidth_min != None and bandwidth_max != None
-            and rti != None and nlp_tol != None and nlp_max_iter != None and qp_max_iter != None
+            adapt_gain_min != None and
+            adapt_gain_max != None and
+            Q != None
         ):
             self._l1_opt = None
         else:
             self._l1_opt = L1Optimizer(
-                model=model, u_min=u_min, u_max=u_max,
-                a_gain=adapt_gain, bandwidth=bandwidth,
-                bandwidth_min=bandwidth_min, bandwidth_max=bandwidth_max,
-                Ts=self._dt, M=opt_horizon, Am=self._Am, rti=rti,
-                nlp_tol=nlp_tol, nlp_max_iter=nlp_max_iter, qp_max_iter=qp_max_iter
+                model=model, bandwidth=bandwidth,
+                amin=adapt_gain_min, amax=adapt_gain_max,
+                Ts=self._dt, Am=self._Am, Q=Q,
             )
 
     @property
@@ -582,13 +570,13 @@ class L1Augmentation():
         timer: bool
     ) -> None:
         st = time.perf_counter()
-        self._optimization(x=x)
         d_m, d_um = self._adaptation(x=x)
         ul1 = self._control_law(d_m=d_m)
         self._predictor(
             x=x, uref=uref, ul1=ul1,
             d_m=d_m, d_um=d_um
         )
+        self._optimization(x=x)
         print(f"ul1: {ul1}")
         if timer:
             print(f"L1 runtime: {time.perf_counter() - st}")
@@ -599,11 +587,10 @@ class L1Augmentation():
         x: np.ndarray,
     ) -> None:
         if self._l1_opt != None:
-            self._wb = self._l1_opt.get_l1_parameters(
-                wb=self._wb, zpred=self._z, x=x,
+            self._a_gain = self._l1_opt.get_a_gain(
+                a_gain=self._a_gain, zpred=self._z, x=x,
                 u=self._u, ul1=self._ul1,
             )
-            print(f"\nBandwidth: {self._wb[0]}")
 
     def _adaptation(
         self,
@@ -614,11 +601,13 @@ class L1Augmentation():
         )
         g_m = np.array(self._g_m(x))
         g_um = np.array(self._g_um(x))
-
         I = np.eye(self._nz)
         G = np.hstack((g_m, g_um))
-        mu = self._adapt_exp @ z_err
-        adapt = self._a_gain * -I @ np.linalg.inv(G) @ self._adapt_mat @ mu
+        mu = expm(self._Am*self._dt) @ z_err
+
+        adapt = -self._a_gain * I @ \
+            np.linalg.inv(G) @ np.linalg.inv(self._Am) @ \
+            (expm(self._Am*self._dt) - np.eye(self._nz)) @ mu
         d_m = adapt[: self._nm]
         d_um = adapt[self._nm :]
         return d_m, d_um
@@ -719,145 +708,84 @@ class L1Optimizer():
     def __init__(
         self,
         model: Quadrotor,
-        u_min: np.ndarray,
-        u_max: np.ndarray,
-        a_gain: float,
         bandwidth: float,
-        bandwidth_min: float,
-        bandwidth_max:float,
+        amin: float,
+        amax: float,
         Am: np.ndarray,
         Ts: float,
-        M: int,
-        rti: bool,
-        nlp_tol: float,
-        nlp_max_iter: int,
-        qp_max_iter: int,
+        Q: float,
     ):
         model_aug = L1Quadrotor(model)
-        self._Ts = Ts
-        self._M = M
-        self._nx = model.nx
-        self._nu = model.nu
         self._nz = model_aug.nz
-        self._np = model_aug.nx + 2*model.nu
-        self._ny = model_aug.ny
-        self._solver = self._init_solver(
-            model=model_aug, u_min=u_min, u_max=u_max,
-            bandwidth_min=bandwidth_min, bandwidth_max=bandwidth_max,
-            time_step=Ts, M=M, Am=Am, rti=rti, nlp_tol=nlp_tol,
-            nlp_max_iter=nlp_max_iter, qp_max_iter=qp_max_iter
-        )
-        self._nl1p = model_aug.nu
-
-        # make sure model_aug.get_discrete_model() is called
-        # before setting model_aug dimensions
-        self._a_gain = a_gain
+        self._solver = model_aug.get_casadi_solver(Ts=Ts, Am=Am, Q=Q)
         self._wb = np.array([bandwidth])
-        self._wbl = np.array([bandwidth_min])
-        self._wbu = np.array([bandwidth_max])
+        self._amin = np.array([amin])
+        self._amax = np.array([amax])
+        self._ul1 = np.zeros(model.nu)
+        self._x = np.zeros(model.nx)
+        self._run_flag = False
 
-        self._x = np.zeros((1, model.nx))
-        self._zpred = np.zeros((1, model_aug.nz))
-        self._u = np.zeros((1, model.nu))
-        self._ul1 = np.zeros((1, model.nu))
-
-    def get_l1_parameters(
+    def get_a_gain(
         self,
-        wb: float,
+        a_gain: float,
         zpred: np.ndarray,
         x: np.ndarray,
         u: np.ndarray,
         ul1: np.ndarray,
     ) -> float:
-        self._wb = wb
-        self._update_horizon(
-            zpred=zpred, x=x,
-            u=u, ul1=ul1
-        )
-        if self._ul1.shape[0] < self._M+1:
-            pass
+        if self._run_flag:
+            a_gain = self._solve(
+                a_gain=a_gain,zpred=zpred,
+                x=x, u=u, ul1=ul1
+            )
         else:
-            self._solve()
-        return self._wb
+            self._run_flag = True
+        self._ul1 = ul1
+        self._x = x
+        return a_gain
 
-    def _update_horizon(
+    def _solve(
         self,
+        a_gain: np.ndarray,
         zpred: np.ndarray,
         x: np.ndarray,
         u: np.ndarray,
         ul1: np.ndarray,
-    ) -> None:
-        i0 = 0
-        i1 = 0
-        if self._u.shape[0] >= self._M:
-            i0 = 1
-        if self._ul1.shape[0] >= self._M+1:
-            i1 = 1
-        self._zpred = np.vstack(
-            (self._zpred[i0:self._M, :], zpred)
+    ) -> np.ndarray:
+        p = np.hstack((
+            u, self._ul1, ul1, self._x, zpred,
+            self._wb, a_gain, x[-self._nz:],
+        ))
+        lbx = self._amin
+        ubx = self._amax         
+        sol = self._solver(
+            x0=a_gain, p=p, lbx=lbx, ubx=ubx,
         )
-        self._x = np.vstack(
-            (self._x[i0:self._M, :], x)
-        )
-        self._u = np.vstack(
-            (self._u[i0:self._M, :], u)
-        )
-        self._ul1 = np.vstack(
-            (self._ul1[i1:self._M+1, :], ul1)
-        )
+        a_gain = np.array(sol["x"]).flatten()
+        return a_gain
 
-    def _solve(self) -> None:
-        p = np.zeros(self._M*self._np + 1)
-        x = np.zeros(self._M*self._ny)
-        y_ref = np.zeros(self._M*self._ny + self._nl1p)
-
-        y_ref[-self._nl1p :] = self._wb
-        p[-1 :] = self._a_gain
-        for k in range(self._M):
-            p[k*self._np : (k+1)*self._np] = np.hstack(
-                (self._x[k], self._ul1[k:k+2].flatten())
-            )
-            x[k*self._ny : (k+1)*self._ny] = np.hstack(
-                (self._zpred[k], self._u[k])
-            )
-            y_ref[k*self._ny : (k+1)*self._ny] = np.zeros(self._nz+self._nu)
-    
-        self._solver.set(0, "u", self._wb)
-        self._solver.set(0, "lbu", self._wbl)
-        self._solver.set(0, "ubu", self._wbu)
-        self._solver.set(0, "p", p)
-        self._solver.set(0, "lbx", x)
-        self._solver.set(0, "ubx", x)
-        self._solver.set(1, "y_ref", y_ref)
-        self._solver.solve()
-        #self._solver.print_statistics()
-        self._wb = self._solver.get(0,"u")
-
+    '''
     def _init_solver(
         self,
         model: L1Quadrotor,
-        u_min: np.ndarray,
-        u_max: np.ndarray,
-        bandwidth_min: float,
-        bandwidth_max: float,
+        amin: np.ndarray,
+        amax: np.ndarray,
         time_step: float,
-        M: int,
         Am: np.ndarray,
         rti: bool,
         nlp_tol: float,
         nlp_max_iter: int,
         qp_max_iter: int
     ) -> AcadosOcpSolver:
-        assert len(u_min) == len(u_max) == self._nu
         ocp = AcadosOcp()
         ocp.model = model.get_discrete_model(
-            M=M, Ts=time_step, Am=Am
+            Ts=time_step, Am=Am
         )
-        ny = model.nx + model.nu  # combine x and u into y
-        ocp.dims.N = 2
+        ocp.dims.N = 1
         ocp.dims.nx = model.nx
         ocp.dims.nu = model.nu
-        ocp.dims.ny = ny
+        ocp.dims.ny = model.nu
+        ocp.dims.ny_e = model.nx
         ocp.dims.nbx = model.nx
         ocp.dims.nbx_0 = ocp.dims.nbx
         ocp.dims.nbx_e = ocp.dims.nbx
@@ -865,35 +793,22 @@ class L1Optimizer():
 
         # total horizon in seconds
         ocp.solver_options.tf = time_step * ocp.dims.N
-
+            
         # formulate the default least-squares cost as a quadratic cost
+        ocp.cost.cost_type = "LINEAR_LS"
         ocp.cost.cost_type_e = "LINEAR_LS"
-        ocp.cost.cost_type_e = "LINEAR_LS"
-
-        # construct Q for full state
-        R = 0*np.diag(np.ones(model.nu))
-        Q = np.diag(np.hstack(
-            (1000*np.ones(self._nz), np.zeros(self._nu))
-        ))
-        Q_full = Q
-        for k in range(1, self._M):
-            Q_full = block_diag(Q_full, Q)
 
         # W is a block diag matrix of Q and R costs from standard QP
-        ocp.cost.W = block_diag(Q_full, R)
-        # use V coeffs to map x & u to y
-        ocp.cost.Vx = np.zeros((ny, model.nx))
-        ocp.cost.Vx[: model.nx, : model.nx] = np.eye(model.nx)
-        ocp.cost.Vu = np.zeros((ny, model.nu))
-        ocp.cost.Vu[-model.nu :, -model.nu :] = np.eye(model.nu)
+        R = np.array([10**-8.])
+        ocp.cost.W = R
 
         # terminal cost
-        ocp.cost.W_e = Q_full
+        ocp.cost.W_e = np.eye(model.nx)
         ocp.cost.Vx_e = np.eye(model.nx)
 
-        # init reference trajectory (will be overwritten)
-        ocp.cost.yref = np.zeros(ny)
-        ocp.cost.yref_e = np.zeros(model.nx)
+        # Initialize reference trajectory (will be overwritten)
+        ocp.cost.yref = np.zeros(model.nu)
+        ocp.cost.yref_e = np.zeros(model.nx)    
 
         # init parameter vector
         ocp.parameter_values = np.zeros(model.np)
@@ -903,29 +818,13 @@ class L1Optimizer():
 
         # l1 parameter constraints
         ocp.constraints.idxbu = np.arange(model.nu)
-        
-        ocp.constraints.lbu = np.array([bandwidth_min])
-        ocp.constraints.ubu = np.array([bandwidth_max])
-
-        # control input constraints
-        ocp.constraints.idxbx_e = np.zeros(self._nu * self._M)
-        ocp.constraints.lbx_e = np.zeros(self._nu * self._M)
-        ocp.constraints.ubx_e = np.zeros(self._nu * self._M)
-        nz = self._nz
-        nu = self._nu
-        for k in range(self._M):
-            ocp.constraints.idxbx_e[k*nu : (k+1)*nu] = \
-                k*(nz + nu) + nz + np.arange(nu)
-            ocp.constraints.lbx_e[k*nu : (k+1)*nu] = \
-                u_min * np.ones(nu)
-            ocp.constraints.ubx_e[k*nu : (k+1)*nu] = \
-                u_max * np.ones(nu)
-
+        ocp.constraints.lbu = np.array([amin])
+        ocp.constraints.ubu = np.array([amax])
 
         # partial condensing HPIPM is fastest:
         # https://cdn.syscop.de/publications/Frison2020a.pdf
         ocp.solver_options.hpipm_mode = "SPEED_ABS"
-        ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
+        ocp.solver_options.qp_solver = "FULL_CONDENSING_HPIPM"
         ocp.solver_options.qp_solver_warm_start = 1
         ocp.solver_options.qp_solver_iter_max = qp_max_iter
         ocp.solver_options.nlp_solver_max_iter = nlp_max_iter
@@ -934,6 +833,7 @@ class L1Optimizer():
         ocp.solver_options.integrator_type = "DISCRETE"
         ocp.solver_options.print_level = 0
         ocp.solver_options.nlp_solver_ext_qp_res = 1
+        ocp.solver_options.alpha_min = 10**-6
 
         ocp.code_export_directory = "l1opt_c_code"
         name = "acados_l1opt.json"
@@ -950,3 +850,4 @@ class L1Optimizer():
             ocp.solver_options.nlp_solver_type = "SQP"
             solver = AcadosOcpSolver(ocp, json_file=name, cmake_builder=builder)
         return solver
+    '''
