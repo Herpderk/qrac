@@ -69,12 +69,11 @@ class MinimalSim():
     ) -> np.ndarray:
         if type(d) == type(None):
             d = np.zeros(self._nx)
-        u_bd = self._bound_u(u)
-        self._solve(x=x, u=u_bd, d=d, timer=timer)
+        u = self._bound_u(u)
+        self._solve(x=x, u=u, d=d, timer=timer)
         x_sol = self._solver.get("x")[:self._nx]
-        x_bd = self._bound_x(x_sol)
-        self._update_data(x_bd, u_bd)
-        return x_bd
+        self._update_data(x_sol, u)
+        return x_sol
 
     def get_xdata(self) -> np.ndarray:
         return self._x
