@@ -8,12 +8,14 @@ from qrac.control import NMPC
 
 def main():
     # nmpc settings
-    PREDICT_TIME = 30
+    PREDICT_TIME = 15
     CTRL_T = 0.01
     NODES = int(round(PREDICT_TIME / CTRL_T))
-    Q = np.diag([20,20,20, 1,1,1,1, 0,0,0, 0,0,0,])
+    Q = np.diag([2,2,2, 1,1,1,1, 1,1,1, 1,1,1,])
     R = np.diag([0, 0, 0, 0])
-
+    D_MAX = np.array([
+        0,0,0, 0,0,0,0, 5,5,5, 5,5,5,
+    ])
 
     # traj settings
     A = 1
@@ -22,6 +24,7 @@ def main():
     TRANSLATE = [0,0,1]
     xfilename = "../refs/lemniscate/xref.npy"
     ufilename = "../refs/lemniscate/uref.npy"
+    dfilename = "../refs/lemniscate/disturb.npy"
 
 
     # init model
@@ -61,6 +64,9 @@ def main():
     print(f"Avg velocity: {vavg}")
     np.save(xfilename, xref)
     np.save(ufilename, uref)
+    
+    d = D_MAX * np.random.uniform(-1, 1, (NODES, nx))
+    np.save(dfilename, d)
 
 
 if __name__=="__main__":

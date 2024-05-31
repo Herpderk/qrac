@@ -9,25 +9,25 @@ from qrac.sim import MinimalSim
 
 def run():
     # mpc settings
-    CTRL_T = 0.01
-    NODES = 100
-    Q = np.diag([10,10,10, 1,1,1,1, 1,1,1, 1,1,1,])
+    CTRL_T = 0.005
+    NODES = 40
+    Q = np.diag([1,1,1, 1,1,1,1, 1,1,1, 1,1,1,])
     R = np.diag([0, 0, 0, 0])
 
     # estimator settings
-    U_GAIN = 1000
-    P_TOL = 0.1*np.ones(10)
+    U_GAIN = 400
+    P_TOL = 0.2*np.ones(7)
     D_MAX = np.array([
-        0,0,0, 0,0,0,0, 5,5,5, 5,5,5,
+        0,0,0, 0,0,0,0, 6,6,6, 6,6,6,
     ])
     D_MIN = -D_MAX
 
     # sim settings
     SIM_T = CTRL_T / 10
 
-    # file access
-    xfilename = "../refs/lemniscate/xref.npy"
-    ufilename = "../refs/lemniscate/uref.npy"
+    xfilename = "/home/derek/dev/my-repos/qrac/examples/refs/circle/xref.npy"
+    ufilename = "/home/derek/dev/my-repos/qrac/examples/refs/circle/uref.npy"
+
 
     # load in time optimal trajectory
     xref = np.load(xfilename)
@@ -37,11 +37,11 @@ def run():
     # inaccurate model
     inacc = Crazyflie(Ax=0, Ay=0, Az=0)
 
-    # true model
-    m_true = 1.5 * inacc.m
-    Ixx_true = 2 * inacc.Ixx
-    Iyy_true = 2 * inacc.Iyy
-    Izz_true = 2 * inacc.Izz
+   # true model
+    m_true = 2 * inacc.m
+    Ixx_true = 4 * inacc.Ixx
+    Iyy_true = 4 * inacc.Iyy
+    Izz_true = 1 * inacc.Izz
     Ax_true = 0
     Ay_true = 0
     Az_true = 0
@@ -49,25 +49,42 @@ def run():
     yB_true = inacc.yB
     kf_true = inacc.kf
     km_true = inacc.km
-    u_min_true =inacc.u_min
-    u_max_true =inacc.u_max
+    u_min_true = inacc.u_min
+    u_max_true = inacc.u_max
     acc = Quadrotor(
-        m=m_true, Ixx=Ixx_true,Iyy=Iyy_true, Izz=Izz_true,
-        Ax=Ax_true, Ay=Ay_true, Az=Az_true, kf=kf_true, km=km_true,
-        xB=xB_true, yB=yB_true, u_min=u_min_true, u_max=u_max_true
-    )
+        m_true, Ixx_true, Iyy_true, Izz_true,
+        Ax_true, Ay_true, Az_true, kf_true, km_true,
+        xB_true, yB_true, u_min_true, u_max_true)
 
-    # init set-membership
-    p_min = AffineQuadrotor(inacc).get_parameters()\
-        - 1*np.abs(AffineQuadrotor(inacc).get_parameters())
-    p_max = AffineQuadrotor(inacc).get_parameters()\
-        + 1*np.abs(AffineQuadrotor(inacc).get_parameters())
 
-    # init LMS
+    # define realistic parameter bounds
+    p_min = np.zeros(7)
+    p_min[0] = 1 / (2.5*inacc.m)
+    #p_min[1:4] = np.zeros(3)
+    # moments of inertia bounds based on max moment of x5
+    p_min[1] = 1 / (5*inacc.Ixx)
+    p_min[2] = 1 / (5*inacc.Iyy)
+    p_min[3] = 1 / (5*inacc.Izz)
+    p_min[4] = (inacc.Izz - 5*inacc.Iyy) / inacc.Ixx
+    p_min[5] = (inacc.Ixx - 2*inacc.Izz) / inacc.Iyy
+    p_min[6] = (inacc.Iyy - 5*inacc.Ixx) / inacc.Izz
+
+    p_max = np.zeros(7)
+    p_max[0] = 1 / inacc.m
+    #p_max[1:4] = np.zeros(3)
+    p_max[1] = 1 / (inacc.Ixx)
+    p_max[2] = 1 / (inacc.Iyy)
+    p_max[3] = 1 / (inacc.Iyy)
+    p_max[4] = (2*inacc.Izz - inacc.Iyy) / inacc.Ixx
+    p_max[5] = (5*inacc.Ixx - inacc.Izz) / inacc.Iyy
+    p_max[6] = (5*inacc.Iyy - inacc.Ixx) / inacc.Izz
+
     lms = LMS(
         model=inacc, param_min=p_min, param_max=p_max,
         update_gain=U_GAIN, time_step=CTRL_T
     )
+
+    # init set-membership
     sm = SetMembershipEstimator(
         model=inacc, estimator=lms,
         param_tol=P_TOL, param_min=p_min, param_max=p_max,
@@ -75,12 +92,11 @@ def run():
         qp_tol=10**-6, max_iter=10
     )
 
-
     # init adaptive mpc
     anmpc = AdaptiveNMPC(
         model=inacc, estimator=sm, Q=Q, R=R,
         u_min=inacc.u_min, u_max=inacc.u_max, time_step=CTRL_T,
-        num_nodes=NODES, rti=True, real_time=False,
+        num_nodes=NODES, rti=True, real_time=True,
         nlp_tol=10**-6, nlp_max_iter=1, qp_max_iter=4
     )
 
@@ -100,6 +116,7 @@ def run():
     nu = inacc.nu
     uset = np.zeros(nu*NODES)
 
+    anmpc.start()
     for k in range(steps):
         diff = steps - k
         if diff < NODES:
@@ -113,32 +130,21 @@ def run():
             uset[:nu*NODES] = uref[k : k+NODES, :].flatten()
 
         u = anmpc.get_input(x=x, xset=xset, uset=uset, timer=True)
-        d = D_MAX * np.random.uniform(-1, 1, nx)
+        d = 2*D_MAX*(-0.5 + np.random.rand(13))
         x = sim.update(x=x, u=u, d=d, timer=True)
 
         print(f"\nu: {u}")
         print(f"x: {x}")
         print(f"sim time: {(k+1)*CTRL_T}\n")
+    anmpc.stop()
 
+    print(f"init param min: \n{p_min}")
+    print(f"init param max: \n{p_max}")
     print(f"acc params:\n{AffineQuadrotor(acc).get_parameters()}")
     print(f"inacc params:\n{AffineQuadrotor(inacc).get_parameters()}")
-    print(f"param min: \n{p_min}")
-    print(f"param max: \n{p_max}")
-
-
-    # calculate RMSE
-    res = 0
-    xdata = sim.get_xdata()
-    for k in range(steps):
-        res += np.linalg.norm(
-            xref[k, 0:3] - xdata[k, 0:3], ord=2
-        )
-    rmse = np.sqrt(res/steps)
-    print(f"root mean square error: {rmse}")
-
-
-    # plot
+    
     sim.get_animation()
+
 
 
 if __name__=="__main__":

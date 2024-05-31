@@ -1,33 +1,34 @@
 #!/usr/bin/python3
 
 import numpy as np
-from qrac.models import Crazyflie, Quadrotor, AffineQuadrotor
+from qrac.models import Crazyflie, Quadrotor, ParameterizedQuadrotor
 from qrac.control import AdaptiveNMPC
-from qrac.estimation import SetMembershipEstimator, LMS
+from qrac.estimation import MHE
 from qrac.sim import MinimalSim
 
 
 def run():
     # mpc settings
     CTRL_T = 0.01
-    NODES = 100
-    Q = np.diag([10,10,10, 1,1,1,1, 1,1,1, 1,1,1,])
+    NODES = 150
+    Q = np.diag([1,1,1, 1,1,1, 1,1,1, 1,1,1,])
     R = np.diag([0, 0, 0, 0])
 
     # estimator settings
-    U_GAIN = 1000
-    P_TOL = 0.1*np.ones(10)
+    Q_MHE = 1 * np.diag([1,1,1,1,1,1,1])
+    R_MHE = 1 * np.diag([1,1,1, 1,1,1, 1,1,1, 1,1,1])
+    NODES_MHE = 20
     D_MAX = np.array([
-        0,0,0, 0,0,0,0, 5,5,5, 5,5,5,
+        0,0,0, 0,0,0, 10,10,10, 5,5,5,
     ])
     D_MIN = -D_MAX
 
     # sim settings
     SIM_T = CTRL_T / 10
 
-    # file access
-    xfilename = "../refs/lemniscate/xref.npy"
-    ufilename = "../refs/lemniscate/uref.npy"
+    xfilename = "/home/derek/dev/my-repos/qrac/examples/refs/circle/xref.npy"
+    ufilename = "/home/derek/dev/my-repos/qrac/examples/refs/circle/uref.npy"
+
 
     # load in time optimal trajectory
     xref = np.load(xfilename)
@@ -37,51 +38,42 @@ def run():
     # inaccurate model
     inacc = Crazyflie(Ax=0, Ay=0, Az=0)
 
-    # true model
+    # true plant model
     m_true = 1.5 * inacc.m
-    Ixx_true = 2 * inacc.Ixx
-    Iyy_true = 2 * inacc.Iyy
-    Izz_true = 2 * inacc.Izz
+    Ixx_true = 20 * inacc.Ixx
+    Iyy_true = 20 * inacc.Iyy
+    Izz_true = 20 * inacc.Izz
     Ax_true = 0
     Ay_true = 0
     Az_true = 0
     xB_true = inacc.xB
     yB_true = inacc.yB
-    kf_true = inacc.kf
-    km_true = inacc.km
-    u_min_true =inacc.u_min
-    u_max_true =inacc.u_max
+    k_true = inacc.k
+    u_min_true = inacc.u_min
+    u_max_true = inacc.u_max
     acc = Quadrotor(
-        m=m_true, Ixx=Ixx_true,Iyy=Iyy_true, Izz=Izz_true,
-        Ax=Ax_true, Ay=Ay_true, Az=Az_true, kf=kf_true, km=km_true,
-        xB=xB_true, yB=yB_true, u_min=u_min_true, u_max=u_max_true
+        m_true, Ixx_true, Iyy_true, Izz_true,
+        Ax_true, Ay_true, Az_true, xB_true, yB_true,
+        k_true, u_min_true, u_max_true)
+
+    # init estimator
+    p_min = np.zeros(7)
+    p_max = 2 * ParameterizedQuadrotor(acc).get_parameters()
+    mhe = MHE(
+        model=inacc, Q=Q_MHE, R=R_MHE,
+        param_min=p_min, param_max=p_max,
+        disturb_min=D_MIN, disturb_max=D_MAX,
+        time_step=CTRL_T, num_nodes=NODES_MHE,
+        rti=True, nonlinear=True,
+        nlp_tol=10**-6, nlp_max_iter=1, qp_max_iter=3
     )
 
-    # init set-membership
-    p_min = AffineQuadrotor(inacc).get_parameters()\
-        - 1*np.abs(AffineQuadrotor(inacc).get_parameters())
-    p_max = AffineQuadrotor(inacc).get_parameters()\
-        + 1*np.abs(AffineQuadrotor(inacc).get_parameters())
-
-    # init LMS
-    lms = LMS(
-        model=inacc, param_min=p_min, param_max=p_max,
-        update_gain=U_GAIN, time_step=CTRL_T
-    )
-    sm = SetMembershipEstimator(
-        model=inacc, estimator=lms,
-        param_tol=P_TOL, param_min=p_min, param_max=p_max,
-        disturb_min=D_MIN, disturb_max=D_MAX, time_step=CTRL_T,
-        qp_tol=10**-6, max_iter=10
-    )
-
-
-    # init adaptive mpc
+    # init mpc
     anmpc = AdaptiveNMPC(
-        model=inacc, estimator=sm, Q=Q, R=R,
+        model=inacc, estimator=mhe, Q=Q, R=R,
         u_min=inacc.u_min, u_max=inacc.u_max, time_step=CTRL_T,
-        num_nodes=NODES, rti=True, real_time=False,
-        nlp_tol=10**-6, nlp_max_iter=1, qp_max_iter=4
+        num_nodes=NODES, real_time=False, rti=True,
+        nlp_tol=10**-6, nlp_max_iter=1, qp_max_iter=5
     )
 
 
@@ -113,17 +105,15 @@ def run():
             uset[:nu*NODES] = uref[k : k+NODES, :].flatten()
 
         u = anmpc.get_input(x=x, xset=xset, uset=uset, timer=True)
-        d = D_MAX * np.random.uniform(-1, 1, nx)
+        d = 2*D_MAX*(-0.5 + np.random.rand(12))
         x = sim.update(x=x, u=u, d=d, timer=True)
 
         print(f"\nu: {u}")
         print(f"x: {x}")
         print(f"sim time: {(k+1)*CTRL_T}\n")
-
-    print(f"acc params:\n{AffineQuadrotor(acc).get_parameters()}")
-    print(f"inacc params:\n{AffineQuadrotor(inacc).get_parameters()}")
-    print(f"param min: \n{p_min}")
-    print(f"param max: \n{p_max}")
+    
+    print(f"acc params:\n{ParameterizedQuadrotor(acc).get_parameters()}")
+    print(f"inacc params:\n{ParameterizedQuadrotor(inacc).get_parameters()}")
 
 
     # calculate RMSE
@@ -138,7 +128,10 @@ def run():
 
 
     # plot
-    sim.get_animation()
+    sim.get_animation(
+        filename=f"/home/derek/Documents/qrac/circle/nmhe_lem_{rmse}.gif"
+    )
+
 
 
 if __name__=="__main__":

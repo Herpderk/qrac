@@ -11,36 +11,34 @@ def main():
     # mpc settings
     CTRL_T = 0.01
     NODES = 40
-    Q = np.diag([4,4,4, 2,2,2,2, 1,1,1, 1,1,1,])
-    R = 10**(-10) * np.ones(4)
+    Q = np.diag([1,1,1, 1,1,1,1, 1,1,1, 1,1,1,])
+    R = np.diag([0, 0, 0, 0])
 
     # L1 settings
-    A_GAIN = 200
-    W = 80
+    A_GAIN = 10000
+    W = 1000
 
     # sim settings
     SIM_T = CTRL_T / 10
-    D_MAX = np.array([
-        0,0,0, 0,0,0,0, 5,5,5, 5,5,5,
-    ])
 
     # file access
     xfilename = "../refs/lemniscate/xref.npy"
     ufilename = "../refs/lemniscate/uref.npy"
+    dfilename = "../refs/lemniscate/disturb.npy"
 
     # load in time optimal trajectory
     xref = np.load(xfilename)
     uref = np.load(ufilename)
-
+    disturb = np.load(dfilename)
 
     # inaccurate model
     inacc = Crazyflie(Ax=0, Ay=0, Az=0)
 
     # true model
-    m_true = 1.5 * inacc.m
-    Ixx_true = 3 * inacc.Ixx
-    Iyy_true = 3 * inacc.Iyy
-    Izz_true = 3 * inacc.Izz
+    m_true = 1 * inacc.m
+    Ixx_true = 1 * inacc.Ixx
+    Iyy_true = 1 * inacc.Iyy
+    Izz_true = 1 * inacc.Izz
     Ax_true = 0
     Ay_true = 0
     Az_true = 0
@@ -56,22 +54,19 @@ def main():
         xB=xB_true, yB=yB_true, u_min=u_min_true, u_max=u_max_true
     )
 
-
     # init mpc
     mpc = NMPC(
         model=inacc, Q=Q, R=R,
         u_min=inacc.u_min, u_max=inacc.u_max,
         time_step=CTRL_T, num_nodes=NODES,
-        rti=True, nlp_max_iter=1, qp_max_iter=5
+        rti=True, nlp_max_iter=1, qp_max_iter=10
     )
-
 
     # init L1
     l1_mpc = L1Augmentation(
         model=inacc, control_ref=mpc,
         adapt_gain=A_GAIN, bandwidth=W,
     )
-
 
     # init sim
     steps = xref.shape[0]
@@ -80,14 +75,14 @@ def main():
         sim_step=SIM_T, control_step=CTRL_T,
     )
 
-
     # run for predefined number of steps
     nx = inacc.nx
     xset = np.zeros(nx*NODES)
     x = xref[0]
     nu = inacc.nu
     uset = np.zeros(nu*NODES)
-    sat_count = 0
+    sat = 0.0
+    utot = np.zeros(nu)
 
     for k in range(steps):
         diff = steps - k
@@ -102,27 +97,29 @@ def main():
             uset[:nu*NODES] = uref[k:k+NODES, :].flatten()
 
         u = l1_mpc.get_input(x=x, xset=xset, uset=uset, timer=True)
+        utot += u
         for inp in u:
             if inp > 0.15:
-                sat_count += 1
+                sat += inp - 0.15
                 break
-        #d = D_MAX*np.random.uniform(-1, 1, nx)
-        d = np.zeros(13)
+        d = 10*np.hstack(
+            (np.zeros(9), disturb[k,-4:])
+        )
         x = sim.update(x=x, u=u, d=d, timer=True)
 
         print(f"\nu: {u}")
         print(f"x: {x}")
         print(f"sim time: {(k+1)*CTRL_T}\n")
 
-
     # calculate RMSE
-    res = 0
     xdata = sim.get_xdata()
-    err = xref[k, 0:3] - xdata[k, 0:3]
-    rmse = np.sqrt(np.sum(np.square(err))/err.shape[0])
+    err = np.sum(( xref[:,0:3] - xdata[:,0:3] )**2,axis=-1)
+    rmse = np.sqrt(np.sum(err)/err.shape[0])
     print(f"root mean square error: {rmse}")
-    print(f"number of time steps with actuation saturation: {sat_count}")
-
+    print(f"total saturation: {sat}")
+    print(f"average saturation: {sat/steps}")
+    print(f"average saturation per actuator: {sat/4/steps}")
+    print(f"average u: {np.sum(utot) / 4 / steps}")
 
     # plot
     sim.get_animation()
