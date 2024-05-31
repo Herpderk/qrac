@@ -57,16 +57,15 @@ def main():
 
 
     # L1 optimizer settings
-    M = 10
+    A_GAIN = 50
+    M = 1
     W_MIN = 0
     W_MAX = 1000
     # init L1
     l1_mpc = L1Augmentation(
         model=inacc, control_ref=mpc,
-        adapt_gain=A_GAIN, bandwidth=W,
-        opt_horizon=M,
+        adapt_gain=A_GAIN, bandwidth=W, opt_horizon=M,
         bandwidth_min=W_MIN, bandwidth_max=W_MAX,
-        u_min=inacc.u_min, u_max=inacc.u_max,
         rti=True, nlp_tol=10**(-6), nlp_max_iter=1, qp_max_iter=5
     )
 
@@ -99,7 +98,9 @@ def main():
             uset[:nu*NODES] = uref[k : k+NODES, :].flatten()
 
         u = l1_mpc.get_input(x=x, xset=xset, uset=uset, timer=True)
-        d = disturb[k,:]
+        d = np.hstack(
+            (np.zeros(9), disturb[k,-4:])
+        )
         x = sim.update(x=x, u=u, d=d, timer=True)
 
         print(f"\nu: {u}")

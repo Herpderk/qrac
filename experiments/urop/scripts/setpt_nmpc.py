@@ -45,21 +45,21 @@ def main():
         xB=xB_inacc, yB=yB_inacc, u_min=u_min_inacc, u_max=u_max_inacc
     )
 
-
     # init mpc
     nmpc = NMPC(
-        model=inacc, Q=Q, R=R,
+        model=acc, Q=Q, R=R,
         u_min=inacc.u_min, u_max=inacc.u_max,
         time_step=CTRL_T, num_nodes=NODES,
         rti=True, nlp_max_iter=1, qp_max_iter=MAX_ITER_NMPC
     )
-
 
     # init sim
     steps = xref.shape[0]
     sim = MinimalSim(
         model=acc, data_len=steps,
         sim_step=SIM_T, control_step=CTRL_T,
+        anim_spd=5
+        #axes_min=[-0.1, -0.1, 0.8], axes_max=[0.1, 0.1, 1.2]
     )
 
 
@@ -70,7 +70,7 @@ def main():
     nu = inacc.nu
     uset = np.zeros(nu*NODES)
 
-    for k in range(steps):
+    for k in range(int(steps/10)):
         diff = steps - k
         if diff < NODES:
             xset[:nx*diff] = xref[k : k+diff, :].flatten()
@@ -83,7 +83,7 @@ def main():
             uset[:nu*NODES] = uref[k : k+NODES, :].flatten()
 
         u = nmpc.get_input(x=x, xset=xset, uset=uset, timer=True)
-        d = disturb[k,:]
+        d = disturb[k,:] * np.array([0,0,0, 0,0,0,0, 1,1,1, 10,10,10])
         x = sim.update(x=x, u=u, d=d, timer=True)
 
         print(f"\nu: {u}")
@@ -93,7 +93,7 @@ def main():
 
     # save trajectory data
     xdata = sim.get_xdata()
-    np.save(trajname, xdata)
+    #np.save(trajname, xdata)
 
 
     # calculate RMSE
@@ -103,7 +103,8 @@ def main():
 
 
     # save plot
-    sim.get_plot(figname)
+    sim.get_quad_animation(filename="../figures/stable.gif")
+    #sim.get_plot(figname)
 
 
 if __name__=="__main__":

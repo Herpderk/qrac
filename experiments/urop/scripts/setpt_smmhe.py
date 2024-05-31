@@ -12,11 +12,11 @@ from consts import CTRL_T, SIM_T, Q, R, NODES, MAX_ITER_NMPC,\
 
 def main():
     # file access
-    xfilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/setpt_xref.npy"
-    ufilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/setpt_uref.npy"
-    dfilename = "/home/derek/dev/my-repos/qrac/experiments/urop/data/setpt_d.npy"
-    trajname = "/home/derek/dev/my-repos/qrac/experiments/urop/data/setpt_smmhe_traj.npy"
-    figname = "/home/derek/dev/my-repos/qrac/experiments/urop/figures/setpt_smmhe.png"
+    xfilename = "../data/setpt_xref.npy"
+    ufilename = "../data/setpt_uref.npy"
+    dfilename = "../data/setpt_d.npy"
+    trajname = "../data/setpt_smmhe_traj.npy"
+    figname = "../figures/setpt_smmhe.png"
 
 
     # load in time optimal trajectory
@@ -150,7 +150,8 @@ def main():
 
 
     # plot
-    sim.get_plot(figname)
+    #sim.get_plot(figname)
+    sim.get_quad_animation()
 
 
 if __name__=="__main__":
